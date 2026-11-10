@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# bb — talk to the running Blender bridge.
+#
+#   ./bb '{"op": "scene"}'
+#   ./bb 'bpy.ops.mesh.primitive_cube_add()'
+#   ./bb - < snippet.py
+#   ./bb --port 9881 '{"op": "ping"}'
+#
+# BLENDER_BRIDGE_PORT picks the port (default 9877).
+exec python3 "$(dirname "$0")/bridge.py" "$@"
