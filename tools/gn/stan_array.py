@@ -506,16 +506,32 @@ def build(name=NAME):
     hex_y = _switch(ng, (-1850, -2150), "FLOAT", _out(gi, "Flat Top"), p_y, f_y)
     hex_pos = _xyz(ng, (-1650, -2000), x=hex_x, y=hex_y)
 
-    # Triangle：邊長 = Step，列交錯半格
-    t_dx = _out(gi, "Step")
-    t_dy = _math(ng, "MULTIPLY", (-2350, -2800), _out(gi, "Step"), sqrt3 / 2.0,
-                 label="√3/2·Step")
-    t_x = _math(ng, "ADD", (-2050, -2850),
-                _math(ng, "MULTIPLY", (-2200, -2850), col, t_dx),
-                _math(ng, "MULTIPLY", (-2200, -3000), odd_row,
-                      _math(ng, "MULTIPLY", (-2350, -3000), t_dx, 0.5)))
-    t_y = _math(ng, "MULTIPLY", (-2050, -3100), row, t_dy)
-    tri_pos = _xyz(ng, (-1850, -2950), x=t_x, y=t_y)
+    # Triangle：真正的三角形貼磚
+    #   單元是「質心在原點、頂點朝 +Y」的三角形
+    #   質心落在蜂巢晶格上，up / down 以 col 奇偶交錯 180°
+    tri_a = _out(gi, "Step")
+    tri_h = _math(ng, "MULTIPLY", (-2350, -2800), tri_a, sqrt3 / 2.0,
+                  label="h = √3/2·a")
+    tri_half = _math(ng, "MULTIPLY", (-2350, -2950), tri_a, 0.5, label="a/2")
+    tri_third = _math(ng, "DIVIDE", (-2350, -3100), tri_h, 3.0, label="h/3")
+    tri_off = _math(ng, "MULTIPLY", (-2050, -2950), odd_row, tri_half,
+                    label="band 錯 a/2")
+    t_x = _math(ng, "ADD", (-1850, -2850),
+                _math(ng, "MULTIPLY", (-2050, -2850), col, tri_half),
+                _math(ng, "ADD", (-2050, -3000), tri_half, tri_off))
+    t_y = _math(ng, "ADD", (-1850, -3100),
+                _math(ng, "MULTIPLY", (-2050, -3100), row, tri_h),
+                _math(ng, "MULTIPLY", (-2050, -3250),
+                      _math(ng, "ADD", (-2200, -3250), odd_col, 1.0), tri_third))
+    tri_pos = _xyz(ng, (-1650, -2950), x=t_x, y=t_y)
+    tri_rot = _xyz(ng, (-1650, -3250),
+                   z=_math(ng, "MULTIPLY", (-1850, -3250), odd_col, math.pi,
+                           label="down → 180°"))
+
+    grid_is_tri = _compare(ng, (-1500, -2800), "EQUAL", _out(gi, "Grid Type"), 2,
+                           data_type="INT", label="Tri?")
+    grid_rot = _switch(ng, (-1300, -2900), "VECTOR", grid_is_tri,
+                       _xyz(ng, (-1500, -3000)), tri_rot, label="格子旋轉")
 
     grid_pos = _index_switch(ng, (-1500, -1500), "VECTOR", _out(gi, "Grid Type"),
                              [sq_pos, hex_pos, tri_pos], label="Grid Type")
@@ -524,7 +540,7 @@ def build(name=NAME):
     _link(ng, g_total, _in(g_pts, "Count"))
     _link(ng, grid_pos, _in(g_pts, "Position"))
     grid_geom = _store_orientation(ng, _out(g_pts, "Points"),
-                                   _xyz(ng, (-850, -850)),
+                                   grid_rot,
                                    _xyz(ng, (-850, -1050), x=1.0),
                                    _xyz(ng, (-850, -1250), z=1.0),
                                    (-850, -900))

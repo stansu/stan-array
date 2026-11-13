@@ -425,7 +425,7 @@ def scene_hex(ng):
     tiles = bpy.data.collections.new("Hex Tiles")
     bpy.context.scene.collection.children.link(tiles)
     palette = [("Terracotta", (0.68, 0.34, 0.21)),
-               ("Cream", (0.82, 0.76, 0.64)),
+               ("Mustard", (0.78, 0.56, 0.18)),
                ("Teal", (0.16, 0.45, 0.42))]
     for i, (name, color) in enumerate(palette):
         bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.112, depth=0.03,
@@ -457,38 +457,40 @@ def scene_hex(ng):
 def scene_tri(ng):
     setup_world(strength=0.5, color=(0.04, 0.045, 0.05))
     setup_light(angle=0.3, energy=2.8, rot=(0.65, 0.1, 0.75))
-    floor(size=10, color=(0.14, 0.14, 0.15), rough=0.85)
+    floor(size=10, color=(0.10, 0.10, 0.11), rough=0.85)
 
-    studs = bpy.data.collections.new("Tri Studs")
-    bpy.context.scene.collection.children.link(studs)
-    palette = [("Brass", (0.72, 0.55, 0.26), 0.3, 0.8),
-               ("Steel", (0.55, 0.58, 0.60), 0.35, 0.7),
-               ("Copper", (0.62, 0.30, 0.18), 0.35, 0.6)]
-    for i, (name, color, rough, metal) in enumerate(palette):
-        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.055, radius2=0.0,
-                                        depth=0.09, location=(0, 0, 0))
+    side = 0.24
+    radius = side / math.sqrt(3.0)
+    tiles = bpy.data.collections.new("Tri Tiles")
+    bpy.context.scene.collection.children.link(tiles)
+    palette = [("Terracotta", (0.68, 0.34, 0.21)),
+               ("Mustard", (0.78, 0.56, 0.18)),
+               ("Teal", (0.16, 0.45, 0.42))]
+    for i, (name, color) in enumerate(palette):
+        bpy.ops.mesh.primitive_cylinder_add(vertices=3, radius=radius, depth=0.03,
+                                            location=(0, 0, 0))
         o = bpy.context.object
-        o.name = "Stud %d" % i
-        o.data.materials.append(material("Stud " + name, color, rough, metal))
+        o.name = "Tri %d" % i
+        o.data.materials.append(material("Tri " + name, color, 0.4))
         for c in list(o.users_collection):
             c.objects.unlink(o)
-        studs.objects.link(o)
+        tiles.objects.link(o)
 
-    host = empty_host("Tri Panel")
+    host = empty_host("Tri Wall")
     host.rotation_euler = (math.radians(90), 0, 0)
     apply_array(host, ng, {
-        "Mode": 1, "Grid Type": 2, "Count X": 15, "Count Y": 11,
-        "Step": 0.175,
-        "Unit From Collection": True, "Collection": studs, "Collection Count": 3,
+        "Mode": 1, "Grid Type": 2, "Count X": 13, "Count Y": 8,
+        "Step": side,
+        "Unit From Collection": True, "Collection": tiles, "Collection Count": 3,
         "Seed": 8,
     })
     bpy.context.view_layer.update()
-    box("Tri Backing", (2.60, 0.06, 1.75), (1.15, 0.055, 0.85),
-        material("Tri Backing", (0.07, 0.075, 0.08), 0.65))
-    box("Tri Frame", (2.70, 0.08, 0.05), (1.15, 0.02, -0.03),
-        material("Tri Frame", (0.12, 0.12, 0.13), 0.5))
-    camera((3.3, -3.7, 1.65), (1.15, 0, 0.82), 50)
-    area_light((2.4, -2.0, 2.6), (1.1, 0, 0.9), 3.5, 200)
+    box("Tri Backing", (2.02, 0.05, 1.86), (0.90, 0.06, 0.82),
+        material("Tri Backing", (0.05, 0.05, 0.06), 0.8))
+    box("Tri Frame", (2.12, 0.07, 0.06), (0.90, 0.03, -0.12),
+        material("Tri Frame", (0.04, 0.04, 0.05), 0.55))
+    camera((3.0, -3.45, 1.6), (0.90, 0, 0.82), 52)
+    area_light((2.5, -2.0, 2.7), (0.9, 0, 0.85), 3.8, 220)
 
 
 SCENES = {

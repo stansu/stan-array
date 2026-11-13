@@ -53,7 +53,7 @@ Link it.
 |---|---|---|---|
 | `0` **XY** | square | `Step` per axis, or Gap / Fit | none |
 | `1` **Hex** | honeycomb | `Cell Size` (hex diameter) | `Flat Top` = false: odd **rows** shift `dx/2`; true: odd **columns** shift `dy/2` |
-| `2` **Triangle** | equilateral triangular lattice | `Step` = side length | odd rows shift `side/2` |
+| `2` **Triangle** | triangular **tiling** — triangle centroids on a honeycomb | `Step` = triangle side | every other cell rotated 180° (up/down) |
 
 Hex math (`R = Cell Size / 2`):
 
@@ -66,6 +66,14 @@ Hex math (`R = Cell Size / 2`):
 than the tile to leave grout lines. Blender's 6-sided cylinder is pointy-top, so
 use `Flat Top = false` with it. Hex and Triangle ignore `Spacing Mode`; the
 lattice pitch comes from `Cell Size` / `Step`.
+
+**Hex and Triangle are no longer the same lattice.** Hex places units at honeycomb
+cell centres (for hex tiles). Triangle places equilateral-triangle **centroids** on
+the dual honeycomb and rotates every other cell 180°, so triangle tiles actually
+tessellate. `Count X` is the number of triangles per band and `Count Y` the number
+of bands. The unit triangle must have its **centroid at the origin** and its apex
+pointing **+Y** (Blender's 3-sided cylinder is already like this); down cells are
+flipped automatically.
 
 ## Spacing (`Spacing Mode`)
 
@@ -134,7 +142,7 @@ Applied **after** instancing, so it composes with each unit's own orientation:
 | `Collection Count` | Int | 1 | number of mesh objects, for the random pick |
 | `Direction` | Vector | (1, 0, 0) | Linear direction, object space |
 | `Count` | Int | 5 | Linear / Radial / Curve(Fit) |
-| `Count X` `Count Y` | Int | 5 | Grid |
+| `Count X` `Count Y` | Int | 5 | Grid (Triangle: triangles per band × bands) |
 | `Grid Type` | Int | 0 | 0 XY · 1 Hex · 2 Triangle |
 | `Cell Size` | Float | 0.25 | hex diameter |
 | `Flat Top` | Bool | false | hex orientation |
@@ -167,7 +175,7 @@ export, or shading that needs unique geometry).
 | [fence](demo/stan_fence.png) | Linear + Gap (posts + rails) |
 | [tiles](demo/stan_tiles.png) | Grid XY + Gap on a wall |
 | [hex](demo/stan_hex.png) | Grid Type = Hex, three tiles picked at random |
-| [tri](demo/stan_tri.png) | Grid Type = Triangle (triangular lattice) |
+| [tri](demo/stan_tri.png) | Grid Type = Triangle — a real triangular tiling with alternating up/down cells |
 | [lamp](demo/stan_lamp.png) | Radial with a unit offset from its origin |
 | [bracelet](demo/stan_bracelet.png) | Curve with a cyclic path |
 | [scatter](demo/stan_scatter.png) | Mesh → Surface, normals + random variation |
@@ -183,9 +191,11 @@ set.
   irregular units can still touch; add a little extra gap.
 - `Fit` keeps the count and changes the spacing. If the unit is larger than
   `Length`, the step clamps to 0.
-- Hex and Triangle build a ragged staggered edge by design (odd rows/columns shift
-  half a cell). A backing panel hides it; use `Flat Top` to choose which edge is
-  ragged.
+- Hex and Triangle build a ragged staggered edge by design. A backing panel hides
+  it; use `Flat Top` to choose which edge is ragged for Hex.
+- Triangle expects a unit triangle whose centroid sits at the origin and whose apex
+  points +Y; the down cells are rotated 180°, so an off-centre triangle will show
+  seams.
 - For `Unit From Collection`, the bounding box used by `Gap`/`Fit` comes from the
   realised collection. Keep unit meshes at the origin.
 - `Collection Count` must match the real number of mesh objects, or the random
@@ -213,7 +223,7 @@ python3 tools/gn/gn.py apply --group stan --object "Host" \
 # render the eight demo scenes + contact sheet
 python3 tools/gn/gn.py stan-demo --samples 32 --res 760
 
-# smoke tests (19 checks: every mode, lattice, spacing, align, mirror, gradient, realize)
+# smoke tests (20 checks: every mode, lattice, spacing, align, mirror, gradient, realize)
 blender -b --factory-startup --python tools/gn/test_stan_array.py
 ```
 
@@ -248,7 +258,7 @@ MIT — see [LICENSE](LICENSE).
 `assets/geometry_nodes.blend` → `NodeTree` → `Stan Array`，加到物件上，選 **Mode**：
 
 - `0` 線性（Direction 方向）
-- `1` 網格（**Grid Type**：`0` XY 方格、`1` Hex 蜂巢、`2` Triangle 三角晶格）
+- `1` 網格（**Grid Type**：`0` XY 方格、`1` Hex 蜂巢、`2` Triangle 三角形貼磚）
 - `2` 環狀（Radius、Arc、Start Angle）
 - `3` 曲線（指定 Curve 物件）
 - `4` Mesh（頂點／邊中點／面中心／表面隨機；Surface 留空用自己）
@@ -256,8 +266,14 @@ MIT — see [LICENSE](LICENSE).
 
 **Grid Type = Hex** 就是原本的 Hex Array：`Cell Size` 是六角外徑，
 `Flat Top` 切 pointy/flat，`Count X/Y` 是格數。Blender 的 6 邊柱體是 pointy-top，
-所以配 `Flat Top = false`。Hex/Triangle 不受 `Spacing Mode` 影響，間距由
-`Cell Size` / `Step`（三角邊長）決定。
+所以配 `Flat Top = false`。
+
+**Grid Type = Triangle** 是真正的三角形貼磚：三角形質心排在蜂巢晶格上，
+每隔一格自動轉 180°（up/down 交錯），所以三角形會密合。`Step` 是三角形邊長，
+`Count X` 是每帶的三角形數、`Count Y` 是帶數。單元的**質心要在原點、頂點朝 +Y**
+（Blender 的 3 邊柱體本來就是這樣）。
+
+Hex/Triangle 不受 `Spacing Mode` 影響，間距由 `Cell Size` / `Step` 決定。
 
 `Spacing Mode`：`0` Step（中心距固定）、`1` Gap（用 bounding box 貼齊留縫）、
 `2` Fit（數量不變，外緣對齊 `Length`；Grid 另有 `Length Y`）。
@@ -283,7 +299,7 @@ Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` �
 
 ```bash
 python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend
-blender -b --factory-startup --python tools/gn/test_stan_array.py   # 19 項檢查
+blender -b --factory-startup --python tools/gn/test_stan_array.py   # 20 項檢查
 python3 tools/gn/gn.py stan-demo                   # 八個示範場景 + contact sheet
 ```
 

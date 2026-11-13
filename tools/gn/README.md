@@ -11,7 +11,7 @@ Triangle）／Radial／Curve／Mesh／Collection，間距支援 Step／Gap／Fit
 | [`stan_array.py`](stan_array.py) | `Stan Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
 | [`stan_array_demo.py`](stan_array_demo.py) | 八個示範場景與 Cycles 算圖（headless）。 |
 | [`contact_sheet.py`](contact_sheet.py) | 把 `demo/stan_*.png` 拼成 `demo/stan_contact.png`（需要 Pillow）。 |
-| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（19 項：每個模式、三種晶格、間距、方向、鏡像、漸變、Realize）。 |
+| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（20 項：每個模式、三種晶格、間距、方向、鏡像、漸變、Realize）。 |
 | [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
 | [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `stan-demo`，透過 Blender Bridge 操作開著的 Blender。 |
 | [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫。任何 .blend 都能 Append / Link 這個 node group。 |
@@ -37,7 +37,10 @@ Triangle）／Radial／Curve／Mesh／Collection，間距支援 Step／Gap／Fit
 - `1` **Hex**：`R = Cell Size / 2`；
   pointy-top（`Flat Top = false`）`dx = √3·R`、`dy = 1.5·R`，奇數列 X 偏移 `dx/2`；
   flat-top（true）`dx = 1.5·R`、`dy = √3·R`，奇數行 Y 偏移 `dy/2`。
-- `2` **Triangle**：`dx = Step`（邊長）、`dy = √3/2·Step`，奇數列 X 偏移 `dx/2`。
+- `2` **Triangle**：真正的三角形貼磚。三角形**質心**排在蜂巢晶格上：
+  `h = √3/2·a`、`x = a/2 + col·a/2 + (帶奇數 ? a/2 : 0)`、
+  `y = band·h + (col 奇數 ? 2h/3 : h/3)`；col 奇數（down）自動轉 180°。
+  `Count X` 是每帶三角形數、`Count Y` 是帶數。單元質心要在原點、頂點朝 +Y。
 
 Hex/Triangle 不使用 `Spacing Mode`；點數 = `Count X × Count Y`，直接用
 `Index` 推 `col/row` 後算座標，所以不需要 Mesh Grid，也沒有頂點順序問題。

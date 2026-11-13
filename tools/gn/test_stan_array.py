@@ -158,9 +158,18 @@ def main():
     setv(mod, "Flat Top", False)
     setv(mod, "Grid Type", 2)
     setv(mod, "Step", 0.2)
+    setv(mod, "Count X", 2)
+    setv(mod, "Count Y", 2)
     got = samples(host)
-    check("triangle lattice", close(got[3]["pos"], (0.1, 0.1732, 0)),
-          str(got[3]["pos"]))
+    tri_expected = [(0.1, 0.0577, 0), (0.2, 0.1155, 0),
+                    (0.2, 0.2309, 0), (0.3, 0.2887, 0)]
+    check("triangle tiling positions",
+          len(got) == 4 and all(close(g["pos"], e) for g, e in zip(got, tri_expected)),
+          str([g["pos"] for g in got]))
+    check("triangle tiling flips down cells",
+          abs(abs(got[1]["rot"][2]) - 180) < 0.1
+          and abs(got[0]["rot"][2]) < 0.1,
+          str([g["rot"][2] for g in got]))
 
     reset(mod)
     setv(mod, "Mode", 2)
