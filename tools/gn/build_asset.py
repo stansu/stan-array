@@ -4,8 +4,7 @@
         --asset assets/geometry_nodes.blend
 
 Creates/refreshes every node group in this package, marks them as assets and
-saves a clean .blend that any project can link or append from. Node groups are
-added to the "Geometry Nodes" asset catalog when the catalog file is writable.
+saves a clean .blend that any project can link or append from.
 """
 
 import argparse
@@ -19,10 +18,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
+import array_gn  # noqa: E402
 import hex_array  # noqa: E402
 
 DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
 CATALOG = "Geometry Nodes"
+
+MODULES = [
+    (hex_array, ("geometry nodes", "hex", "array", "instancing")),
+    (array_gn, ("geometry nodes", "array", "instancing", "curve", "radial")),
+]
 
 
 def _parse_args():
@@ -40,12 +45,12 @@ def _clean_scene():
         bpy.data.collections.remove(coll)
 
 
-def _mark_asset(ng):
+def _mark_asset(ng, tags):
     if not ng.asset_data:
         ng.asset_mark()
-    ng.asset_data.description = ng.description or hex_array.DESCRIPTION
+    ng.asset_data.description = ng.description
     existing = {t.name for t in ng.asset_data.tags}
-    for tag in ("geometry nodes", "hex", "array", "instancing"):
+    for tag in tags:
         if tag not in existing:
             ng.asset_data.tags.new(tag)
 
@@ -55,19 +60,26 @@ def main():
     os.makedirs(os.path.dirname(args.asset), exist_ok=True)
     _clean_scene()
 
-    ng = hex_array.build()
-    _mark_asset(ng)
-    ng.use_fake_user = True
+    groups = []
+    for module, tags in MODULES:
+        ng = module.build()
+        _mark_asset(ng, tags)
+        ng.use_fake_user = True
+        groups.append({
+            "name": ng.name,
+            "description": ng.description,
+            "nodes": len(ng.nodes),
+            "links": len(ng.links),
+            "inputs": module.inputs_summary(ng),
+        })
 
     bpy.ops.wm.save_as_mainfile(filepath=args.asset, compress=True)
-    summary = {
+    print("GN_ASSET_JSON " + json.dumps({
         "asset": bpy.data.filepath,
-        "node_group": ng.name,
-        "is_modifier": bool(ng.is_modifier),
-        "asset_marked": bool(ng.asset_data),
-        "inputs": hex_array.inputs_summary(ng),
-    }
-    print("GN_ASSET_JSON " + json.dumps(summary, ensure_ascii=False))
+        "groups": [{k: g[k] for k in ("name", "description", "nodes", "links")}
+                   for g in groups],
+        "inputs": {g["name"]: g["inputs"] for g in groups},
+    }, ensure_ascii=False))
     return 0
 
 

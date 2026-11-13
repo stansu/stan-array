@@ -1,7 +1,11 @@
 # Geometry Nodes 工具庫（GN）
 
-可重複使用的 Geometry Nodes 工具，目前一個：**Hex Array** — 蜂巢狀陣列，
-每格放 Collection 裡的一個物件，可亂數挑選、亂數大小、亂數間距。
+可重複使用的 Geometry Nodes 工具：
+
+- **Array** — 通用陣列：線性／網格／環狀／曲線／Mesh 頂點邊面／Collection 物件軸心，
+  間距支援固定（Step）、貼齊留縫（Gap）、總長均分（Fit），可隨機、鏡像、漸變。
+  完整參數表在[根目錄 README](../../README.md#array)。
+- **Hex Array** — 蜂巢狀陣列，每格放 Collection 裡的一個物件，可亂數挑選、亂數大小、亂數間距。
 
 用 `python3 tools/gn/gn.py demo` 會生出示範場景（[`demo/hex_array_demo.blend`](../demo/hex_array_demo.blend)）。
 
@@ -13,11 +17,15 @@
 
 | 路徑 | 說明 |
 |---|---|
+| [`array_gn.py`](array_gn.py) | `Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
+| [`array_demo.py`](array_demo.py) | `Array` 示範場景與算圖（headless，六個場景 + contact sheet）。 |
+| [`test_array.py`](test_array.py) | `Array` 的無頭煙霧測試（16 項：每個模式、間距、方向、鏡像、漸變、Realize）。 |
 | [`hex_array.py`](hex_array.py) | `Hex Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
 | [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
-| [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `demo`，透過 Blender Bridge 操作開著的 Blender。 |
+| [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `demo` / `array-demo`，可加 `--group array`；透過 Blender Bridge 操作開著的 Blender。 |
 | [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫。任何 .blend 都能 Append / Link 這個 node group。 |
-| [`../../demo/hex_array_demo.blend`](../../demo/hex_array_demo.blend) | 示範場景（3 種 tile、材質、燈光、相機、算好的圖）。 |
+| [`../../demo/hex_array_demo.blend`](../../demo/hex_array_demo.blend) | Hex Array 示範場景（3 種 tile、材質、燈光、相機、算好的圖）。 |
+| [`../../demo/array_demo.blend`](../../demo/array_demo.blend) | Array 示範場景（欄杆；host 上已套好 modifier 與參數）。 |
 
 ## 參數
 
@@ -60,6 +68,22 @@ node group 內用 9 個 frame 分區（顏色也不同），從左到右、由�
 
 每個節點都有中文 label（例如 `列 = round(Y/dy)`、`錯開 dx/2`），frame 標題也寫了它在做什麼。
 
+## Array 節點圖分區
+
+| 分區 | 內容 |
+|---|---|
+| ① 單位與尺寸 | Unit selection（host / collection）＋ Bounding Box → 單元尺寸 |
+| ② 間距 | 方向投影、Fit/Gap/Step 三個候選值 → Index Switch |
+| ③ 排列 | A Linear、B Grid、C Radial、D Curve、E Mesh、F Collection；每個分支把 `arr_rot` / `arr_fwd` / `arr_nrm` 存成點屬性 |
+| ④ 方向 | 讀回屬性 → Natural / Forward / Up → Rotation |
+| ⑤ 實例化 | Instance on Points（可 Pick Instance） |
+| ⑥ 變化 | Rotate / Scale / Set Position（隨機、鏡像、漸變） |
+| ⑦ 輸出 | 實例或 Realize |
+
+Collection 模式用 `Instances to Points` 的替代方案：`Sample Index`（INSTANCE 域）
+取每個 locator 的 Position 與 Instance Rotation，再餵給 `Points` 與 `Instance on Points`。
+`Sample Nearest Surface` 的 Value 是純量，所以邊中點的法線是分 X/Y/Z 三次取樣再組合。
+
 ## 用法
 
 ### 1. 在 Blender 裡直接 Append（最單純）
@@ -81,6 +105,13 @@ python3 tools/gn/gn.py build
 # 目前 Blender 裡有哪些工具 / 這個工具吃什麼參數
 python3 tools/gn/gn.py list
 python3 tools/gn/gn.py inputs
+
+# Array：線性 + Fit（Curve / Surface / Point Collection 等資料插槽請在 modifier UI 設定）
+python3 tools/gn/gn.py apply --group array --object "Host" \
+    --set mode=linear --set spacing=fit --set length=5 --set count=9
+
+# 六個示範場景
+python3 tools/gn/gn.py array-demo
 
 # 把 Hex Array 套到 "Hex Array Demo"，單元來自 collection "Hex Tiles"
 python3 tools/gn/gn.py apply --object "Hex Array Demo" --collection "Hex Tiles" \

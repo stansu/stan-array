@@ -27,7 +27,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
-GROUP = "Hex Array"
+GROUPS = {"hex": "Hex Array", "array": "Array"}
+MODULES = {"hex": "hex_array", "array": "array_gn"}
+GROUP = GROUPS["hex"]
+MODULE = MODULES["hex"]
 
 
 def _find_blender():
@@ -37,7 +40,9 @@ def _find_blender():
     found = shutil.which("blender")
     if found:
         return found
-    for pattern in ("~/apps/blender/blender-*/blender",
+    # 這個 repo 以 Blender 4.5 建置；先找 4.5，再退回最新版
+    for pattern in ("~/apps/blender/blender-4.5*/blender",
+                    "~/apps/blender/blender-*/blender",
                     "/opt/blender*/blender",
                     "/usr/local/blender*/blender"):
         hits = sorted(glob.glob(os.path.expanduser(pattern)))
@@ -57,6 +62,35 @@ PREAMBLE = ("import bpy, os, sys, json, math\n"
             "sys.path.insert(0, %r)\n" % HERE)
 
 ALIASES = {
+    "mode": "Mode",
+    "unit_from_collection": "Unit From Collection",
+    "use_collection": "Unit From Collection",
+    "point_collection": "Point Collection",
+    "direction": "Direction",
+    "count": "Count",
+    "count_x": "Count X",
+    "count_y": "Count Y",
+    "step": "Step",
+    "gap": "Gap",
+    "length": "Length",
+    "length_y": "Length Y",
+    "radius": "Radius",
+    "arc": "Arc",
+    "start_angle": "Start Angle",
+    "surface": "Surface",
+    "mesh_mode": "Mesh Mode",
+    "density": "Density",
+    "align": "Align",
+    "forward_axis": "Forward Axis",
+    "up_axis": "Up Axis",
+    "random_offset": "Random Offset",
+    "random_rotate": "Random Rotate",
+    "random_scale": "Random Scale",
+    "mirror": "Mirror",
+    "mirror_axis": "Mirror Axis",
+    "gradient_scale": "Gradient Scale",
+    "gradient_rotate": "Gradient Rotate",
+    "realize": "Realize",
     "count_long": "Count Long",
     "count_short": "Count Short",
     "cell": "Cell Size",
@@ -69,6 +103,18 @@ ALIASES = {
     "collection_count": "Collection Count",
     "scale": "Scale",
     "seed": "Seed",
+}
+
+# 讓 CLI 可以用名字設定 Int 列舉
+ENUMS = {
+    "Mode": {"linear": 0, "grid": 1, "radial": 2, "curve": 3,
+             "mesh": 4, "collection": 5, "points": 5},
+    "Spacing": {"step": 0, "gap": 1, "fit": 2},
+    "Align": {"natural": 0, "forward": 1, "up": 2},
+    "Mesh Mode": {"vertices": 0, "edges": 1, "faces": 2, "surface": 3},
+    "Mirror Axis": {"x": 0, "y": 1, "z": 2},
+    "Forward Axis": {"x": 0, "y": 1, "z": 2},
+    "Up Axis": {"x": 0, "y": 1, "z": 2},
 }
 
 
@@ -109,11 +155,14 @@ def cmd_build(args):
     proc = subprocess.run(cmd, capture_output=True, text=True)
     tail = (proc.stdout or "") + (proc.stderr or "")
     for line in tail.splitlines():
-        if line.startswith("GN_ASSET_JSON "):
-            data = json.loads(line[len("GN_ASSET_JSON "):])
+        if "GN_ASSET_JSON " in line:
+            payload = line.split("GN_ASSET_JSON ", 1)[1]
+            data = json.JSONDecoder().raw_decode(payload)[0]
             print("asset : %s" % data["asset"])
-            print("group : %s (modifier=%s, asset=%s)"
-                  % (data["node_group"], data["is_modifier"], data["asset_marked"]))
+            for group in data["groups"]:
+                print("group : %-10s nodes=%-4d links=%-4d  %s"
+                      % (group["name"], group["nodes"], group["links"],
+                         group["description"]))
             return 0
         if "Error" in line or "Traceback" in line:
             print(line, file=sys.stderr)
@@ -123,7 +172,7 @@ def cmd_build(args):
 
 def cmd_inputs(args):
     data = run_json(
-        "import hex_array\n"
+        "import " + MODULE + "\n"
         "ng = bpy.data.node_groups.get(%r)\n"
         "if ng is None:\n"
         "    print('GN_JSON ' + json.dumps({'exists': False}))\n"
@@ -131,14 +180,14 @@ def cmd_inputs(args):
         "    print('GN_JSON ' + json.dumps({\n"
         "        'exists': True, 'name': ng.name, 'is_modifier': bool(ng.is_modifier),\n"
         "        'asset': bool(ng.asset_data),\n"
-        "        'inputs': hex_array.inputs_summary(ng)}, ensure_ascii=False))\n" % GROUP)
+        "        'inputs': " + MODULE + ".inputs_summary(ng)}, ensure_ascii=False))\n" % GROUP)
     if not data.get("exists"):
         print("目前 Blender 沒有 %r（先跑 build，或 apply 會自動 append）" % GROUP)
         return 1
     print("%s  (modifier=%s, asset=%s)" % (data["name"], data["is_modifier"], data["asset"]))
-    print("%-18s %-22s %-12s %s" % ("name", "type", "default", "description"))
+    print("%-24s %-16s %-14s %s" % ("name", "type", "default", "description"))
     for row in data["inputs"]:
-        print("%-18s %-22s %-12s %s" % (
+        print("%-24s %-16s %-14s %s" % (
             row["name"], row["type"].replace("NodeSocket", ""),
             row["default"] if row["default"] is not None else "-",
             row["description"]))
@@ -174,7 +223,10 @@ def cmd_apply(args):
         name = ALIASES.get(key, key if key[:1].isupper() else None)
         if name is None:
             raise SystemExit("不認識的參數 %r；可用：%s" % (key, ", ".join(sorted(ALIASES))))
-        params[name] = value.strip()
+        raw = value.strip()
+        if name in ENUMS and raw.lower() in ENUMS[name]:
+            raw = str(ENUMS[name][raw.lower()])
+        params[name] = raw
 
     code = """
 import hex_array
@@ -494,15 +546,34 @@ def cmd_demo(args):
     return 0
 
 
+def cmd_array_demo(args):
+    os.makedirs(os.path.join(WORKSPACE, "demo"), exist_ok=True)
+    cmd = [BLENDER, "-b", "--factory-startup", "--python",
+           os.path.join(HERE, "array_demo.py"), "--",
+           "--asset", ASSET, "--out", os.path.join(WORKSPACE, "demo"),
+           "--samples", str(args.samples), "--res", str(args.res)]
+    if args.only:
+        cmd += ["--only", args.only]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    tail = (proc.stdout or "") + (proc.stderr or "")
+    for line in tail.splitlines():
+        if line.startswith(("RENDERED", "CONTACT")):
+            print(line)
+    if proc.returncode != 0:
+        print(tail[-3000:], file=sys.stderr)
+    return proc.returncode
+
+
 # ----------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(description="Geometry Nodes toolkit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend")
+    p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend（全部 node group）")
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("inputs", help="列出 node group 參數")
+    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
     p.set_defaults(func=cmd_inputs)
 
     p = sub.add_parser("list", help="列出 Blender 裡的 GN node groups")
@@ -510,7 +581,8 @@ def main():
 
     p = sub.add_parser("apply", help="把工具套到物件上")
     p.add_argument("--object", required=True, help="目標 mesh 物件名稱")
-    p.add_argument("--collection", help="六角單元的 collection 名稱")
+    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
+    p.add_argument("--collection", help="單元 collection 名稱")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help="參數，可重複，例如 --set cell=0.3")
     p.add_argument("--no-fit", dest="fit", action="store_false",
@@ -521,16 +593,27 @@ def main():
     p.set_defaults(func=cmd_apply, fit=True, verbose=False, reload=False)
 
     p = sub.add_parser("reload", help="把 session 裡的 node group 換成 asset 的新版")
+    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
     p.add_argument("--force", action="store_true",
                    help="即使還有 modifier 在用也移除（會斷掉那些 modifier）")
     p.set_defaults(func=cmd_reload, force=False)
 
-    p = sub.add_parser("demo", help="建示範場景、套用並算圖")
+    p = sub.add_parser("demo", help="建 Hex Array 示範場景、套用並算圖")
     p.add_argument("--reload", action="store_true",
                    help="丟掉 session 裡的舊版 node group，重新從 asset 載入")
     p.set_defaults(func=cmd_demo, reload=False)
 
+    p = sub.add_parser("array-demo", help="建 Array 示範場景並算圖（headless）")
+    p.add_argument("--only", default="", help="fence,tiles,lamp,bracelet,scatter,locators")
+    p.add_argument("--samples", type=int, default=32)
+    p.add_argument("--res", type=int, default=760)
+    p.set_defaults(func=cmd_array_demo)
+
     args = ap.parse_args()
+    global GROUP, MODULE
+    key = getattr(args, "group", "hex")
+    GROUP = GROUPS[key]
+    MODULE = MODULES[key]
     return args.func(args) or 0
 
 
