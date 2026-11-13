@@ -44,11 +44,12 @@ Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Me
 - `3` **Brick**：`x = col·stepX + (floor(row / Stagger Repeat) · Stagger · stepX mod stepX)`、
   `y = row·stepY`；`Stagger` 0 = 對齊、0.5 = 1/2、0.333 = 1/3、0.25 = 1/4。
   Brick 跟 XY 一樣吃 Step/Gap/Fit。
-- `4` **Herringbone**：4W × 4W cell，H 在 `(0,0)(3,1)(2,2)(1,3)`、V 在
+- `4` **Herringbone**：`Pattern W` 控制磚寬（L = 2W），4W × 4W cell，H 在 `(0,0)(3,1)(2,2)(1,3)`、V 在
   `(2,0)(1,1)(0,2)(3,3)`，每格 8 塊；磚要 2:1、中心在原點。
-- `5` **Chevron**：`A = L/√2`、`H = W·√2`，奇數欄鏡像；單元要是「兩端垂直、
-  長軸 +45°」的平行四邊形。
-- `6` **Basket Weave**：2W × 2W block，偶數 block 兩塊橫磚、奇數 block 兩塊直磚。
+- `5` **Chevron**：`Pattern L/W` 控制板尺寸（0 = 從平行四邊形 bbox 反推 `A`、`H+A`），
+  `A = L/√2`、`H = W·√2`，奇數欄鏡像；單元要是「兩端垂直、長軸 +45°」的平行四邊形。
+- `6` **Basket Weave**：`Pattern W` 控制磚寬（L = 2W），2W × 2W block，
+  偶數 block 兩塊橫磚、奇數 block 兩塊直磚。
 
 Hex/Triangle 不使用 `Spacing Mode`；點數 = `Count X × Count Y`，直接用
 `Index` 推 `col/row` 後算座標，所以不需要 Mesh Grid，也沒有頂點順序問題。

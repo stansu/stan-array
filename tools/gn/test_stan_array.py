@@ -223,6 +223,8 @@ def main():
     reset(mod)
     setv(mod, "Mode", 1)
     setv(mod, "Grid Type", 5)
+    setv(mod, "Pattern L", 0.4)
+    setv(mod, "Pattern W", 0.2)
     setv(mod, "Count X", 2)
     setv(mod, "Count Y", 2)
     got = samples(host)
@@ -230,7 +232,7 @@ def main():
     ch_sx = [g["scale"][0] for g in got]
     check("chevron 2x2 positions",
           len(got) == 4 and all(close(p, e) for p, e in zip(
-              ch_xy, [(0.141, 0.283), (0.424, 0.283), (0.141, 0.849), (0.424, 0.849)])),
+              ch_xy, [(0.141, 0.141), (0.424, 0.141), (0.141, 0.424), (0.424, 0.424)])),
           str(ch_xy))
     check("chevron mirrors odd columns", ch_sx[0] > 0 and ch_sx[1] < 0, str(ch_sx))
 

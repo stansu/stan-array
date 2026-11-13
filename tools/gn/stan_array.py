@@ -305,6 +305,11 @@ def build(name=NAME):
          desc="Brick 的錯位比例：0 = 對齊（stack），0.5 = 1/2，0.333 = 1/3，0.25 = 1/4…")
     sock("Stagger Repeat", "NodeSocketInt", 1, p_main, minv=1, maxv=64,
          desc="Brick 每幾列推進一次錯位（1 = 每列；2 = 每兩列）")
+    sock("Pattern L", "NodeSocketFloat", 0.0, p_main, minv=0.0, subtype="DISTANCE",
+         desc="Herringbone / Chevron / Basket 的磚長；0 = 用單元尺寸"
+              "（Herringbone / Basket 會用 2×Pattern W）")
+    sock("Pattern W", "NodeSocketFloat", 0.0, p_main, minv=0.0, subtype="DISTANCE",
+         desc="Herringbone / Chevron / Basket 的磚寬；0 = 用單元尺寸")
     sock("Spacing Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
          desc="0 Step 固定間距 ｜ 1 Gap 依尺寸貼齊留縫 ｜ 2 Fit 給總長均分"
               "（Hex / Triangle 用自己的 Cell Size / Step，不受此項影響）")
@@ -563,6 +568,37 @@ def build(name=NAME):
                              _math(ng, "MULTIPLY", (-2000, -3600), row, step_y),
                              fit_y_half))
 
+    # Pattern L / W：Chevron 的 bbox 是 A × (H+A)，要反推 L、W
+    pat_ch = _compare(ng, (-2650, -5600), "EQUAL", _out(gi, "Grid Type"), 5,
+                      data_type="INT", label="Chevron?")
+    sqrt2 = math.sqrt(2.0)
+    l0_hb = size_sep.outputs["X"]
+    w0_hb = size_sep.outputs["Y"]
+    l0_ch = _math(ng, "MULTIPLY", (-2350, -5550), size_sep.outputs["X"], sqrt2,
+                  label="L0 = A·√2")
+    w0_ch = _math(ng, "MAXIMUM", (-2350, -5700),
+                  _math(ng, "DIVIDE", (-2500, -5700),
+                        _math(ng, "SUBTRACT", (-2650, -5700),
+                              size_sep.outputs["Y"], size_sep.outputs["X"]),
+                        sqrt2), 0.0001, label="W0 = (H+A − A)/√2")
+    l0 = _switch(ng, (-2150, -5600), "FLOAT", pat_ch, l0_hb, l0_ch, label="L0")
+    w0 = _switch(ng, (-2150, -5750), "FLOAT", pat_ch, w0_hb, w0_ch, label="W0")
+    bl = _out(gi, "Pattern L")
+    bw = _out(gi, "Pattern W")
+    patL = _switch(ng, (-1950, -5600), "FLOAT",
+                   _compare(ng, (-2100, -5600), "GREATER_THAN", bl, 0), l0, bl,
+                   label="pattern L")
+    patW = _switch(ng, (-1950, -5750), "FLOAT",
+                   _compare(ng, (-2100, -5750), "GREATER_THAN", bw, 0), w0, bw,
+                   label="pattern W")
+    # H/B 的磚長固定 2W；Chevron 用 L
+    fit_x = _math(ng, "DIVIDE", (-1750, -5600),
+                  _switch(ng, (-1900, -5600), "FLOAT", pat_ch,
+                          _math(ng, "MULTIPLY", (-2050, -5600), patW, 2.0), patL),
+                  l0, label="x scale")
+    fit_y = _math(ng, "DIVIDE", (-1750, -5750), patW, w0, label="y scale")
+    pat_fit = _xyz(ng, (-1550, -5650), x=fit_x, y=fit_y, z=1.0)
+
     # Herringbone：4W × 4W cell，8 塊（H/H/H/H + V/V/V/V）
     hb_i = _out(gidx, "Index")
     hb_slot = _math(ng, "FLOORED_MODULO", (-2350, -3800), hb_i, 8.0, label="slot")
@@ -584,14 +620,14 @@ def build(name=NAME):
                              _math(ng, "MULTIPLY", (-1950, -3750), hb_col, 4.0),
                              hb_ox),
                        _switch(ng, (-1700, -3900), "FLOAT", hb_v, 1.0, 0.5)),
-                 size_sep.outputs["Y"], label="hb x")
+                 patW, label="hb x")
     hb_y = _math(ng, "MULTIPLY", (-1450, -3950),
                  _math(ng, "ADD", (-1650, -3950),
                        _math(ng, "ADD", (-1800, -3950),
                              _math(ng, "MULTIPLY", (-1950, -3950), hb_row, 4.0),
                              hb_oy),
                        _switch(ng, (-1700, -4050), "FLOAT", hb_v, 0.5, 1.0)),
-                 size_sep.outputs["Y"], label="hb y")
+                 patW, label="hb y")
     hb_pos = _xyz(ng, (-1250, -3850), x=hb_x, y=hb_y)
 
     # Basket weave：2W × 2W block，H 兩塊疊 / V 兩塊並排，block 棋盤交錯
@@ -611,13 +647,13 @@ def build(name=NAME):
                        _math(ng, "MULTIPLY", (-1800, -4350), bw_col, 2.0),
                        _switch(ng, (-1700, -4500), "FLOAT", bw_par,
                                1.0, _math(ng, "ADD", (-1850, -4500), bw_slot, 0.5))),
-                 size_sep.outputs["Y"], label="bw x")
+                 patW, label="bw x")
     bw_y = _math(ng, "MULTIPLY", (-1450, -4550),
                  _math(ng, "ADD", (-1650, -4550),
                        _math(ng, "MULTIPLY", (-1800, -4550), bw_row, 2.0),
                        _switch(ng, (-1700, -4700), "FLOAT", bw_par,
                                _math(ng, "ADD", (-1850, -4700), bw_slot, 0.5), 1.0)),
-                 size_sep.outputs["Y"], label="bw y")
+                 patW, label="bw y")
     bw_pos = _xyz(ng, (-1250, -4450), x=bw_x, y=bw_y)
 
     # Chevron：45° 平行四邊形單元；奇數欄鏡像成 -45°
@@ -626,9 +662,9 @@ def build(name=NAME):
     ch_row = _math(ng, "FLOOR", (-2350, -5150),
                    _math(ng, "DIVIDE", (-2200, -5150), ch_i, gx_n))
     ch_par = _math(ng, "FLOORED_MODULO", (-2150, -5300), ch_col, 2.0)
-    ch_a = _math(ng, "MULTIPLY", (-2150, -5000), size_sep.outputs["X"],
+    ch_a = _math(ng, "MULTIPLY", (-2150, -5000), patL,
                  1.0 / math.sqrt(2.0), label="A = L/√2")
-    ch_h = _math(ng, "MULTIPLY", (-2150, -5150), size_sep.outputs["Y"],
+    ch_h = _math(ng, "MULTIPLY", (-2150, -5150), patW,
                  math.sqrt(2.0), label="H = W·√2")
     ch_x = _math(ng, "MULTIPLY", (-1950, -5000),
                  _math(ng, "ADD", (-2100, -5000), ch_col, 0.5), ch_a, label="ch x")
@@ -636,7 +672,9 @@ def build(name=NAME):
                  _math(ng, "ADD", (-2100, -5150), ch_row, 0.5), ch_h, label="ch y")
     ch_sx = _switch(ng, (-1950, -5300), "FLOAT", ch_par, 1.0, -1.0,
                     label="mirror odd cols")
-    ch_scale = _xyz(ng, (-1750, -5300), x=ch_sx, y=1.0, z=1.0)
+    ch_scale = _xyz(ng, (-1750, -5300),
+                    x=_math(ng, "MULTIPLY", (-1900, -5300), ch_sx, fit_x),
+                    y=fit_y, z=1.0, label="chevron fit")
     ch_pos = _xyz(ng, (-1250, -5100), x=ch_x, y=ch_y)
 
     pat_rot = _index_switch(ng, (-1050, -4700), "FLOAT", _out(gi, "Grid Type"),
@@ -645,7 +683,7 @@ def build(name=NAME):
     one_vec = _xyz(ng, (-1050, -5000), x=1.0, y=1.0, z=1.0)
     pat_scale = _index_switch(ng, (-850, -5000), "VECTOR", _out(gi, "Grid Type"),
                               [one_vec, one_vec, one_vec, one_vec,
-                               one_vec, ch_scale, one_vec],
+                               pat_fit, ch_scale, pat_fit],
                               label="pattern scale")
 
     grid_pos = _index_switch(ng, (-1500, -1500), "VECTOR", _out(gi, "Grid Type"),

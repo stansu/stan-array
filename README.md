@@ -55,9 +55,9 @@ Link it.
 | `1` **Hex** | honeycomb | `Cell Size` (hex diameter) | `Flat Top` = false: odd **rows** shift `dx/2`; true: odd **columns** shift `dy/2` |
 | `2` **Triangle** | triangular **tiling** — triangle centroids on a honeycomb | `Step` = triangle side | every other cell rotated 180° (up/down) |
 | `3` **Brick** | staggered brick courses | `Step`/`Gap`/`Fit` per axis | `Stagger` × brick length, advanced every `Stagger Repeat` courses |
-| `4` **Herringbone** | 2:1 brick herringbone | `Count X`/`Count Y` = 4W cells, 8 bricks per cell | unit must be a 2:1 brick (L = 2W), centred |
-| `5` **Chevron** | 45° chevron | `Count X`/`Count Y` = planks | unit must be a parallelogram with **vertical ends**, long axis +45°, centred |
-| `6` **Basket Weave** | 2×2 blocks of H/V pairs | `Count X`/`Count Y` = blocks, 2 bricks per block | unit must be a 2:1 brick |
+| `4` **Herringbone** | 2:1 brick herringbone | `Count X`/`Count Y` = 4W cells, 8 bricks per cell | `Pattern W` (L = 2W), centred |
+| `5` **Chevron** | 45° chevron | `Count X`/`Count Y` = planks | `Pattern L`/`Pattern W`; unit must be a parallelogram with **vertical ends**, centred |
+| `6` **Basket Weave** | 2×2 blocks of H/V pairs | `Count X`/`Count Y` = blocks, 2 bricks per block | `Pattern W` (L = 2W), centred |
 
 Hex math (`R = Cell Size / 2`):
 
@@ -166,6 +166,8 @@ Applied **after** instancing, so it composes with each unit's own orientation:
 | `Flat Top` | Bool | false | hex orientation |
 | `Stagger` | Float | 0.5 | Brick offset as a fraction of `stepX` (0 = stack, 0.5 = 1/2, 0.333 = 1/3) |
 | `Stagger Repeat` | Int | 1 | courses per offset step (1 = every course, 2 = every two) |
+| `Pattern L` | Float | 0.0 | Herringbone / Chevron / Basket brick length; 0 = derive from the unit (Chevron needs it) |
+| `Pattern W` | Float | 0.0 | brick width; 0 = derive from the unit |
 | `Spacing Mode` | Int | 0 | 0 Step · 1 Gap · 2 Fit |
 | `Step` | Float | 1.0 | metres (also Triangle side) |
 | `Gap` | Float | 0.1 | metres |
@@ -214,14 +216,19 @@ These three are 2D **patterns**, not simple course offsets:
 - **Herringbone** (`4`): a 4W × 4W cell holds 8 bricks — four horizontal at
   `(0,0) (3,1) (2,2) (1,3)` and four vertical at `(2,0) (1,1) (0,2) (3,3)`,
   in units of `W`. Bricks cross cell edges, which is what makes the bond
-  continuous. Requires a 2:1 brick (`L = 2W`) centred at its origin.
-- **Basket Weave** (`6`): a 2W × 2W block holds two bricks. Blocks alternate
+  continuous. `Pattern W` sets the brick width, `L = 2W`; leave it at 0 to use the
+  unit's own width, or set it to scale any unit (even a cube) into the right brick.
+- **Basket Weave** (`6`): a 2W × 2W block holds two bricks, `Pattern W`
+  controls the width (`L = 2W`). Blocks alternate
   orientation like a checkerboard: even blocks are two stacked horizontal bricks,
   odd blocks are two side-by-side vertical bricks. Requires a 2:1 brick.
 - **Chevron** (`5`): planks sit at ±45° in a square lattice
   (`A = L/√2`, `H = W·√2`), with odd columns mirrored to make the V. The unit must
   be a **mitred parallelogram** with vertical ends and a +45° long axis (see the
   demo); a plain rectangle will show V-shaped grout gaps at the joints.
+  `Pattern L` / `Pattern W` set the plank size; when both are 0 the size is derived
+  from the parallelogram bbox (`A` and `H + A`) — set them explicitly if the bbox
+  is not a clean parallelogram, or to change the plank size without editing the mesh.
 
 `Count X` / `Count Y` mean cells for Herringbone and Basket Weave (8 and 2 bricks
 per cell), and planks for Chevron. All three are unit-size driven: author the
