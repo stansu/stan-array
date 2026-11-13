@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""gn.py — Geometry Nodes toolkit CLI.
+"""gn.py — Stan Array toolkit CLI.
 
 Talks to the *live* Blender through the Blender Bridge (tools/blender-bridge),
 so whatever you see on screen is what gets the modifier.
 
-    python3 tools/gn/gn.py build                 # 重建 assets/geometry_nodes.blend
-    python3 tools/gn/gn.py inputs                # 列出 node group 的參數
-    python3 tools/gn/gn.py list                  # 目前 Blender 裡的 GN node groups
-    python3 tools/gn/gn.py apply --object Host --collection Tiles \
-        --set count_long=16 --set count_short=10 --set cell=0.2 --set seed=7
-    python3 tools/gn/gn.py demo                  # 建一組示範 tiles 並套用 + 算圖
+    python3 tools/gn/gn.py build                 # rebuild assets/geometry_nodes.blend
+    python3 tools/gn/gn.py inputs                # list the node group inputs
+    python3 tools/gn/gn.py list                  # node groups in the running Blender
+    python3 tools/gn/gn.py apply --object Host --set mode=grid --set grid_type=hex
+    python3 tools/gn/gn.py stan-demo             # render the demo scenes (headless)
 
-參數名稱（給 --set）:
-    count_long, count_short, cell, spacing, size_random, spacing_random,
-    yaw, collection_count, source_size, seed
+All subcommands accept --group for future tools; today there is one group,
+"Stan Array" (key: stan).
 """
 
 import argparse
@@ -27,10 +25,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
-GROUPS = {"hex": "Hex Array", "array": "Array"}
-MODULES = {"hex": "hex_array", "array": "array_gn"}
-GROUP = GROUPS["hex"]
-MODULE = MODULES["hex"]
+GROUPS = {"stan": "Stan Array"}
+MODULES = {"stan": "stan_array"}
+GROUP = GROUPS["stan"]
+MODULE = MODULES["stan"]
 
 
 def _find_blender():
@@ -40,7 +38,7 @@ def _find_blender():
     found = shutil.which("blender")
     if found:
         return found
-    # 這個 repo 以 Blender 4.5 建置；先找 4.5，再退回最新版
+    # this repo is built with Blender 4.5; prefer it, then fall back to newest
     for pattern in ("~/apps/blender/blender-4.5*/blender",
                     "~/apps/blender/blender-*/blender",
                     "/opt/blender*/blender",
@@ -65,11 +63,18 @@ ALIASES = {
     "mode": "Mode",
     "unit_from_collection": "Unit From Collection",
     "use_collection": "Unit From Collection",
-    "point_collection": "Point Collection",
+    "collection_count": "Collection Count",
     "direction": "Direction",
     "count": "Count",
     "count_x": "Count X",
     "count_y": "Count Y",
+    "grid_type": "Grid Type",
+    "grid": "Grid Type",
+    "cell": "Cell Size",
+    "cell_size": "Cell Size",
+    "flat_top": "Flat Top",
+    "spacing_mode": "Spacing Mode",
+    "spacing": "Spacing Mode",
     "step": "Step",
     "gap": "Gap",
     "length": "Length",
@@ -77,39 +82,32 @@ ALIASES = {
     "radius": "Radius",
     "arc": "Arc",
     "start_angle": "Start Angle",
+    "curve": "Curve",
     "surface": "Surface",
     "mesh_mode": "Mesh Mode",
     "density": "Density",
+    "point_collection": "Point Collection",
     "align": "Align",
     "forward_axis": "Forward Axis",
     "up_axis": "Up Axis",
     "random_offset": "Random Offset",
     "random_rotate": "Random Rotate",
+    "unit_scale": "Unit Scale",
     "random_scale": "Random Scale",
+    "seed": "Seed",
     "mirror": "Mirror",
     "mirror_axis": "Mirror Axis",
     "gradient_scale": "Gradient Scale",
     "gradient_rotate": "Gradient Rotate",
     "realize": "Realize",
-    "count_long": "Count Long",
-    "count_short": "Count Short",
-    "cell": "Cell Size",
-    "cell_size": "Cell Size",
-    "spacing": "Spacing",
-    "size_random": "Size Random",
-    "spacing_random": "Spacing Random",
-    "yaw": "Yaw Random",
-    "yaw_random": "Yaw Random",
-    "collection_count": "Collection Count",
-    "scale": "Scale",
-    "seed": "Seed",
 }
 
-# 讓 CLI 可以用名字設定 Int 列舉
+# Int enums can be set by name from the CLI
 ENUMS = {
     "Mode": {"linear": 0, "grid": 1, "radial": 2, "curve": 3,
-             "mesh": 4, "collection": 5, "points": 5},
-    "Spacing": {"step": 0, "gap": 1, "fit": 2},
+             "mesh": 4, "collection": 5},
+    "Spacing Mode": {"step": 0, "gap": 1, "fit": 2},
+    "Grid Type": {"xy": 0, "square": 0, "hex": 1, "triangle": 2, "tri": 2},
     "Align": {"natural": 0, "forward": 1, "up": 2},
     "Mesh Mode": {"vertices": 0, "edges": 1, "faces": 2, "surface": 3},
     "Mirror Axis": {"x": 0, "y": 1, "z": 2},
@@ -160,7 +158,7 @@ def cmd_build(args):
             data = json.JSONDecoder().raw_decode(payload)[0]
             print("asset : %s" % data["asset"])
             for group in data["groups"]:
-                print("group : %-10s nodes=%-4d links=%-4d  %s"
+                print("group : %-12s nodes=%-4d links=%-4d  %s"
                       % (group["name"], group["nodes"], group["links"],
                          group["description"]))
             return 0
@@ -229,16 +227,14 @@ def cmd_apply(args):
         params[name] = raw
 
     code = """
-import hex_array
+import json
 
 asset = %(asset)r
 group = %(group)r
 target = %(target)r
 coll_name = %(coll)r
 params = json.loads(%(params)r)
-fit = %(fit)r
-verbose = %(verbose)r
-RELOAD = %(reload)r
+reload = %(reload)r
 
 def report(status, **extra):
     payload = {"status": status}
@@ -256,7 +252,7 @@ if coll_name and coll is None:
     raise SystemExit(1)
 
 ng = bpy.data.node_groups.get(group)
-if ng is not None and RELOAD:
+if ng is not None and reload:
     ng.use_fake_user = False
     if ng.users == 0:
         bpy.data.node_groups.remove(ng)
@@ -272,7 +268,6 @@ if ng is None:
 mod = obj.modifiers.get(group) or obj.modifiers.new(group, 'NODES')
 mod.node_group = ng
 
-# 依 socket 型別轉值
 applied = {}
 for item in ng.interface.items_tree:
     if item.item_type != 'SOCKET' or item.in_out != 'INPUT':
@@ -301,26 +296,19 @@ def set_input(name, value):
 if coll is not None:
     set_input("Collection", coll)
 
-# Collection 內物件數 + 原始尺寸（fit 用）
 objects = [o for o in (coll.objects if coll else []) if o.type == 'MESH']
-count = max(1, len(objects))
-source = 0.0
-for o in objects:
-    source = max(source, max(o.dimensions))
 if "Collection Count" not in applied:
+    count = max(1, len(objects))
     set_input("Collection Count", count)
     applied["Collection Count"] = count
 
-
+obj.update_tag()
 bpy.context.view_layer.update()
 report("ok", object=obj.name, modifier=mod.name, group=ng.name,
        collection=coll.name if coll else None,
-       collection_objects=count, applied=applied,
-       modifier_inputs=len([i for i in ng.interface.items_tree
-                            if i.item_type == 'SOCKET' and i.in_out == 'INPUT']))
+       collection_objects=max(1, len(objects)), applied=applied)
 """ % dict(asset=ASSET, group=GROUP, target=args.object, coll=args.collection,
-           params=json.dumps(params), fit=args.fit, verbose=args.verbose,
-           reload=args.reload)
+           params=json.dumps(params), reload=args.reload)
 
     data = run_json(code)
     if data.get("status") != "ok":
@@ -330,14 +318,12 @@ report("ok", object=obj.name, modifier=mod.name, group=ng.name,
     if data.get("collection"):
         print("collection: %s（%d 個 mesh）" % (data["collection"], data["collection_objects"]))
     for key, value in data["applied"].items():
-        print("  %-18s %s" % (key, value))
+        print("  %-20s %s" % (key, value))
     return 0
 
 
 def cmd_reload(args):
-    """把 session 裡的舊 node group 換成 assets 裡整理好的版本。"""
     code = """
-import hex_array
 asset, group = %(asset)r, %(group)r
 ng = bpy.data.node_groups.get(group)
 removed = False
@@ -372,184 +358,10 @@ print("GN_JSON " + json.dumps({
     return 0
 
 
-DEMO_CODE = r"""
-import bpy, json
-from mathutils import Vector
-
-GROUP = "Hex Array"
-ASSET = %(asset)r
-RELOAD = %(reload)r
-CELL = 0.25
-RADIUS = CELL / 2.0
-
-def purge(names):
-    for name in names:
-        obj = bpy.data.objects.get(name)
-        if obj is not None:
-            bpy.data.objects.remove(obj, do_unlink=True)
-
-def material(name, color, rough=0.45):
-    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    bsdf.inputs["Base Color"].default_value = (*color, 1.0)
-    bsdf.inputs["Roughness"].default_value = rough
-    return mat
-
-purge(["Hex Array Demo", "Hex Demo Floor", "Hex Demo Camera", "Hex Demo Sun",
-       "Tile A", "Tile B", "Tile C"])
-old = bpy.data.collections.get("Hex Tiles")
-if old is not None:
-    bpy.data.collections.remove(old)
-tiles = bpy.data.collections.new("Hex Tiles")
-bpy.context.scene.collection.children.link(tiles)
-
-def hex_prism(name, depth, color, post=None, rough=0.45):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=RADIUS, depth=depth,
-                                        location=(0, 0, 0))
-    obj = bpy.context.object
-    obj.name = name
-    obj.data.name = name
-    obj.data.materials.append(material("mat " + name, color, rough))
-    if post:
-        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=post[0],
-                                            depth=post[1],
-                                            location=(0, 0, depth / 2 + post[1] / 2))
-        stub = bpy.context.object
-        stub.data.materials.append(material("mat " + name + " post", color, rough))
-        for c in list(stub.users_collection):
-            c.objects.unlink(stub)
-        tiles.objects.link(stub)
-        stub.select_set(True)
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.join()
-        obj = bpy.context.object
-    for c in list(obj.users_collection):
-        c.objects.unlink(obj)
-    tiles.objects.link(obj)
-    return obj
-
-hex_prism("Tile A", 0.020, (0.22, 0.24, 0.27))
-hex_prism("Tile B", 0.060, (0.85, 0.55, 0.25))
-hex_prism("Tile C", 0.014, (0.20, 0.55, 0.52), post=(0.045, 0.05))
-tiles.hide_viewport = True
-tiles.hide_render = True
-
-# 地板
-bpy.ops.mesh.primitive_plane_add(size=12, location=(0, 0, -0.02))
-floor = bpy.context.object
-floor.name = "Hex Demo Floor"
-floor.data.materials.append(material("mat Floor", (0.55, 0.55, 0.56), 0.6))
-
-# 主機物件（空 mesh + modifier）
-mesh = bpy.data.meshes.new("Hex Array Demo")
-host = bpy.data.objects.new("Hex Array Demo", mesh)
-bpy.context.scene.collection.objects.link(host)
-
-ng = bpy.data.node_groups.get(GROUP)
-if ng is not None and RELOAD:
-    ng.use_fake_user = False
-    bpy.data.node_groups.remove(ng)
-    ng = None
-if ng is None:
-    with bpy.data.libraries.load(ASSET, link=False) as (src, dst):
-        dst.node_groups = [GROUP]
-    ng = bpy.data.node_groups[GROUP]
-mod = host.modifiers.get(GROUP) or host.modifiers.new(GROUP, 'NODES')
-mod.node_group = ng
-
-stamps = {"Collection": tiles, "Count Long": 14, "Count Short": 9,
-          "Cell Size": CELL, "Spacing": 1.0, "Size Random": 0.0,
-          "Spacing Random": 0.0, "Yaw Random": 0.0, "Stagger Columns": False,
-          "Collection Count": 3, "Scale": 1.0, "Seed": 3}
-
-def set_input(name, value):
-    for it in ng.interface.items_tree:
-        if it.item_type == 'SOCKET' and it.in_out == 'INPUT' and it.name == name:
-            mod[it.identifier] = value
-            return
-    raise KeyError(name)
-
-def get_input(name):
-    for it in ng.interface.items_tree:
-        if it.item_type == 'SOCKET' and it.in_out == 'INPUT' and it.name == name:
-            return mod[it.identifier]
-    raise KeyError(name)
-
-for key, value in stamps.items():
-    set_input(key, value)
-
-# 燈光 / 世界 / 相機
-sun = bpy.data.objects.new("Hex Demo Sun", bpy.data.lights.new("Hex Demo Sun", 'SUN'))
-sun.data.energy = 3.2
-sun.data.angle = 0.18
-sun.rotation_euler = (0.75, 0.15, 0.9)
-bpy.context.scene.collection.objects.link(sun)
-
-world = bpy.context.scene.world or bpy.data.worlds.new("World")
-bpy.context.scene.world = world
-world.use_nodes = True
-bg = world.node_tree.nodes.get("Background")
-bg.inputs[0].default_value = (0.045, 0.05, 0.06, 1.0)
-bg.inputs[1].default_value = 1.0
-
-cam_data = bpy.data.cameras.new("Hex Demo Camera")
-cam = bpy.data.objects.new("Hex Demo Camera", cam_data)
-bpy.context.scene.collection.objects.link(cam)
-cam.location = Vector((3.1, -3.6, 2.35))
-target = Vector((0.0, 0.0, 0.0))
-cam.rotation_euler = (target - cam.location).to_track_quat('-Z', 'Y').to_euler()
-cam_data.lens = 42
-bpy.context.scene.camera = cam
-
-scene = bpy.context.scene
-scene.render.engine = 'CYCLES'
-scene.cycles.device = 'CPU'
-scene.cycles.samples = 40
-scene.cycles.use_denoising = True
-scene.render.resolution_x = 1100
-scene.render.resolution_y = 800
-scene.render.film_transparent = False
-scene.view_settings.view_transform = 'AgX'
-scene.render.filepath = %(render)r
-bpy.ops.render.render(write_still=True)
-
-print("GN_JSON " + json.dumps({
-    "rendered": scene.render.filepath,
-    "collection": tiles.name,
-    "tiles": [o.name for o in tiles.objects],
-    "host": host.name,
-    "modifier": mod.name,
-    "params": {k: get_input(k) for k in stamps if k != "Collection"},
-}, ensure_ascii=False))
-"""
-
-
-def cmd_demo(args):
-    os.makedirs(OUT_DIR, exist_ok=True)
-    render_path = os.path.join(OUT_DIR, "hex_demo.png")
-    code = DEMO_CODE % dict(asset=ASSET, render=render_path, reload=args.reload)
-    data = run_json(code, timeout=600)
-    print("demo 完成：%s" % data["rendered"])
-    print("collection %s: %s" % (data["collection"], ", ".join(data["tiles"])))
-    print("host: %s / modifier: %s" % (data["host"], data["modifier"]))
-
-    run("obj = bpy.data.objects['Hex Array Demo']\n"
-        "bpy.ops.object.select_all(action='DESELECT')\n"
-        "obj.select_set(True)\n"
-        "bpy.context.view_layer.objects.active = obj\n")
-    op({"op": "look", "path": os.path.join(OUT_DIR, "hex_demo_view.png"),
-        "res": 1100, "shading": "MATERIAL", "frame": True, "overlays": False},
-       timeout=180)
-    print("viewport: %s" % os.path.join(OUT_DIR, "hex_demo_view.png"))
-    return 0
-
-
-def cmd_array_demo(args):
+def cmd_stan_demo(args):
     os.makedirs(os.path.join(WORKSPACE, "demo"), exist_ok=True)
     cmd = [BLENDER, "-b", "--factory-startup", "--python",
-           os.path.join(HERE, "array_demo.py"), "--",
+           os.path.join(HERE, "stan_array_demo.py"), "--",
            "--asset", ASSET, "--out", os.path.join(WORKSPACE, "demo"),
            "--samples", str(args.samples), "--res", str(args.res)]
     if args.only:
@@ -557,61 +369,58 @@ def cmd_array_demo(args):
     proc = subprocess.run(cmd, capture_output=True, text=True)
     tail = (proc.stdout or "") + (proc.stderr or "")
     for line in tail.splitlines():
-        if line.startswith(("RENDERED", "CONTACT")):
+        if line.startswith(("RENDERED", "SAVED")):
             print(line)
     if proc.returncode != 0:
         print(tail[-3000:], file=sys.stderr)
-    return proc.returncode
+        return proc.returncode
+    sheet = os.path.join(HERE, "contact_sheet.py")
+    subprocess.run([sys.executable, sheet, "--dir", os.path.join(WORKSPACE, "demo")])
+    return 0
 
 
 # ----------------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="Geometry Nodes toolkit")
+    ap = argparse.ArgumentParser(description="Stan Array toolkit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend（全部 node group）")
+    p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend")
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("inputs", help="列出 node group 參數")
-    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
+    p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.set_defaults(func=cmd_inputs)
 
     p = sub.add_parser("list", help="列出 Blender 裡的 GN node groups")
+    p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("apply", help="把工具套到物件上")
+    p = sub.add_parser("apply", help="把 Stan Array 套到物件上")
+    p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.add_argument("--object", required=True, help="目標 mesh 物件名稱")
-    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
-    p.add_argument("--collection", help="單元 collection 名稱")
+    p.add_argument("--collection", help="Unit From Collection 的 collection 名稱")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
-                   help="參數，可重複，例如 --set cell=0.3")
-    p.add_argument("--no-fit", dest="fit", action="store_false",
-                   help="不要自動用 collection 量到的尺寸設定 Source Size")
-    p.add_argument("--verbose", action="store_true")
+                   help="參數，可重複，例如 --set grid_type=hex --set cell=0.25")
     p.add_argument("--reload", action="store_true",
                    help="丟掉 session 裡的舊版 node group，重新從 asset 載入")
-    p.set_defaults(func=cmd_apply, fit=True, verbose=False, reload=False)
+    p.set_defaults(func=cmd_apply, reload=False)
 
     p = sub.add_parser("reload", help="把 session 裡的 node group 換成 asset 的新版")
-    p.add_argument("--group", choices=sorted(GROUPS), default="hex")
+    p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.add_argument("--force", action="store_true",
                    help="即使還有 modifier 在用也移除（會斷掉那些 modifier）")
     p.set_defaults(func=cmd_reload, force=False)
 
-    p = sub.add_parser("demo", help="建 Hex Array 示範場景、套用並算圖")
-    p.add_argument("--reload", action="store_true",
-                   help="丟掉 session 裡的舊版 node group，重新從 asset 載入")
-    p.set_defaults(func=cmd_demo, reload=False)
-
-    p = sub.add_parser("array-demo", help="建 Array 示範場景並算圖（headless）")
-    p.add_argument("--only", default="", help="fence,tiles,lamp,bracelet,scatter,locators")
+    p = sub.add_parser("stan-demo", aliases=["demo"], help="建示範場景並算圖（headless）")
+    p.add_argument("--only", default="",
+                   help="fence,tiles,hex,tri,lamp,bracelet,scatter,locators")
     p.add_argument("--samples", type=int, default=32)
     p.add_argument("--res", type=int, default=760)
-    p.set_defaults(func=cmd_array_demo)
+    p.set_defaults(func=cmd_stan_demo)
 
     args = ap.parse_args()
     global GROUP, MODULE
-    key = getattr(args, "group", "hex")
+    key = getattr(args, "group", "stan")
     GROUP = GROUPS[key]
     MODULE = MODULES[key]
     return args.func(args) or 0

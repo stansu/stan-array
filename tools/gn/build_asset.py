@@ -18,15 +18,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-import array_gn  # noqa: E402
-import hex_array  # noqa: E402
+import stan_array  # noqa: E402
 
 DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
 CATALOG = "Geometry Nodes"
 
 MODULES = [
-    (hex_array, ("geometry nodes", "hex", "array", "instancing")),
-    (array_gn, ("geometry nodes", "array", "instancing", "curve", "radial")),
+    (stan_array, ("geometry nodes", "array", "instancing", "hex", "curve",
+                  "radial", "triangle")),
 ]
 
 

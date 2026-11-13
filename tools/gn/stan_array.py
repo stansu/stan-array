@@ -1,4 +1,4 @@
-"""Array — a general-purpose array modifier (Geometry Nodes).
+"""Stan Array — a general-purpose array modifier (Geometry Nodes).
 
 一個 Array 節點群組，把「排列方式」與「間距算法」拆開：
 
@@ -23,10 +23,10 @@ import math
 
 import bpy
 
-NAME = "Array"
+NAME = "Stan Array"
 DESCRIPTION = (
-    "通用陣列：線性／網格／環狀／曲線／Mesh 頂點邊面／Collection 物件軸心；"
-    "間距支援固定、貼齊留縫、總長均分；可隨機與鏡像。"
+    "通用陣列：線性／網格（XY・Hex・Triangle）／環狀／曲線／Mesh 頂點邊面／"
+    "Collection 物件軸心；間距支援固定、貼齊留縫、總長均分；可隨機與鏡像。"
 )
 
 C_UNIT = (0.20, 0.28, 0.36)
@@ -42,6 +42,7 @@ C_VARY = (0.32, 0.24, 0.24)
 C_OUT = (0.24, 0.32, 0.24)
 
 MODE_NAMES = ["Linear", "Grid", "Radial", "Curve", "Mesh", "Collection"]
+GRID_NAMES = ["XY", "Hex", "Triangle"]
 SPACING_NAMES = ["Step", "Gap", "Fit"]
 ALIGN_NAMES = ["Natural", "Forward", "Up"]
 MESH_NAMES = ["Vertices", "Edges", "Faces", "Surface"]
@@ -283,8 +284,16 @@ def build(name=NAME):
          desc="Linear / Radial / Curve(Fit) 的數量")
     sock("Count X", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 X 數量")
     sock("Count Y", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 Y 數量")
-    sock("Spacing", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
-         desc="0 Step 固定間距 ｜ 1 Gap 依尺寸貼齊留縫 ｜ 2 Fit 給總長均分")
+    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
+         desc="0 XY 方格 ｜ 1 Hex 蜂巢 ｜ 2 Triangle 三角晶格")
+    sock("Cell Size", "NodeSocketFloat", 0.25, p_main, minv=0.0001,
+         subtype="DISTANCE",
+         desc="Hex 的六角外徑（頂點到頂點）；Flat Top 時整個晶格轉 90°")
+    sock("Flat Top", "NodeSocketBool", False, p_main,
+         desc="Hex 的平頂方向（False = pointy-top，True = flat-top）")
+    sock("Spacing Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
+         desc="0 Step 固定間距 ｜ 1 Gap 依尺寸貼齊留縫 ｜ 2 Fit 給總長均分"
+              "（Hex / Triangle 用自己的 Cell Size / Step，不受此項影響）")
     sock("Step", "NodeSocketFloat", 1.0, p_main, minv=0.0, subtype="DISTANCE",
          desc="Step 模式的中心距")
     sock("Gap", "NodeSocketFloat", 0.1, p_main, minv=0.0, subtype="DISTANCE",
@@ -318,6 +327,8 @@ def build(name=NAME):
          desc="每份的隨機位移幅度（公尺）")
     sock("Random Rotate", "NodeSocketVector", (0.0, 0.0, 0.0), p_vary,
          desc="每份的隨機旋轉幅度（度，XYZ）")
+    sock("Unit Scale", "NodeSocketFloat", 1.0, p_vary, minv=0.0,
+         desc="所有單元的整體大小倍率（1 = 原始大小）")
     sock("Random Scale", "NodeSocketFloat", 0.0, p_vary, minv=0.0, maxv=1.0,
          subtype="FACTOR", desc="每份的隨機大小幅度（± 比例）")
     sock("Seed", "NodeSocketInt", 0, p_vary)
@@ -389,7 +400,7 @@ def build(name=NAME):
                            count_m1, label="Fit 間距"),
                      0.0, label="≥ 0")
     gap_step = _math(ng, "ADD", (-2700, 200), extent, _out(gi, "Gap"), label="尺寸 + 縫")
-    step_sel = _index_switch(ng, (-2300, 100), "FLOAT", _out(gi, "Spacing"),
+    step_sel = _index_switch(ng, (-2300, 100), "FLOAT", _out(gi, "Spacing Mode"),
                              [_out(gi, "Step"), gap_step, fit_step],
                              label="間距模式")
     step_vec = _scale_vec(ng, (-2100, 250), direction_n, step_sel, label="方向 × 間距")
@@ -399,7 +410,7 @@ def build(name=NAME):
     # ------------------------------------------------------------ ③ 排列
     # Linear ---------------------------------------------------------------
     start = _section(ng)
-    is_fit = _compare(ng, (-2350, 350), "EQUAL", _out(gi, "Spacing"), 2,
+    is_fit = _compare(ng, (-2350, 350), "EQUAL", _out(gi, "Spacing Mode"), 2,
                       data_type="INT", label="Fit?")
     fit_shift = _scale_vec(ng, (-2150, 450), direction_n,
                            _math(ng, "MULTIPLY", (-2350, 450), extent, 0.5,
@@ -444,43 +455,80 @@ def build(name=NAME):
                   _out(gi, "Gap"))
     gap_y = _math(ng, "ADD", (-2200, -700), size_sep.outputs["Y"],
                   _out(gi, "Gap"))
-    step_x = _index_switch(ng, (-1900, -250), "FLOAT", _out(gi, "Spacing"),
+    step_x = _index_switch(ng, (-1900, -250), "FLOAT", _out(gi, "Spacing Mode"),
                            [_out(gi, "Step"), gap_x, fit_x], label="step X")
-    step_y = _index_switch(ng, (-1900, -550), "FLOAT", _out(gi, "Spacing"),
+    step_y = _index_switch(ng, (-1900, -550), "FLOAT", _out(gi, "Spacing Mode"),
                            [_out(gi, "Step"), gap_y, fit_y], label="step Y")
-    grid_fit = _compare(ng, (-2350, -800), "EQUAL", _out(gi, "Spacing"), 2,
+    grid_fit = _compare(ng, (-2350, -800), "EQUAL", _out(gi, "Spacing Mode"), 2,
                         data_type="INT", label="Fit?")
     fit_x_half = _switch(ng, (-2200, -800), "FLOAT", grid_fit, 0.0,
                          _math(ng, "MULTIPLY", (-2350, -950), size_sep.outputs["X"], 0.5))
     fit_y_half = _switch(ng, (-2200, -950), "FLOAT", grid_fit, 0.0,
                          _math(ng, "MULTIPLY", (-2350, -1100), size_sep.outputs["Y"], 0.5))
-    grid_w = _math(ng, "MULTIPLY", (-1700, -250), gx_m1, step_x, label="寬 (Nx−1)·sx")
-    grid_h = _math(ng, "MULTIPLY", (-1700, -550), gy_m1, step_y, label="高 (Ny−1)·sy")
-    grid = _node(ng, "GeometryNodeMeshGrid", (-1500, -400), label="Grid", width=170)
-    _link(ng, grid_w, _in(grid, "Size X"))
-    _link(ng, grid_h, _in(grid, "Size Y"))
-    _link(ng, gx_n, _in(grid, "Vertices X"))
-    _link(ng, gy_n, _in(grid, "Vertices Y"))
-    grid_pts = _node(ng, "GeometryNodeMeshToPoints", (-1300, -400), label="Points", width=150)
-    grid_pts.mode = "VERTICES"
-    _link(ng, _out(grid, "Mesh"), _in(grid_pts, "Mesh"))
-    grid_set = _node(ng, "GeometryNodeSetPosition", (-1100, -400),
-                     label="置中 → 從原點長", width=180)
-    _link(ng, _out(grid_pts, "Points"), _in(grid_set, "Geometry"))
-    _link(ng, _xyz(ng, (-1300, -550),
-                   x=_math(ng, "ADD", (-1500, -550),
-                             _math(ng, "MULTIPLY", (-1650, -550), grid_w, 0.5),
-                             fit_x_half),
-                   y=_math(ng, "ADD", (-1500, -700),
-                             _math(ng, "MULTIPLY", (-1650, -700), grid_h, 0.5),
-                             fit_y_half)),
-          _in(grid_set, "Offset"))
-    grid_geom = _store_orientation(ng, _out(grid_set, "Geometry"),
-                                   _xyz(ng, (-900, -250)),
-                                   _xyz(ng, (-900, -450), x=1.0),
-                                   _xyz(ng, (-900, -650), z=1.0),
-                                   (-900, -300))
-    _frame(ng, "③-B Grid　X/Y 各自間距", C_LAYOUT, list(ng.nodes)[start:])
+
+    gidx = _node(ng, "GeometryNodeInputIndex", (-2500, -1300), label="i", width=140)
+    col = _math(ng, "FLOORED_MODULO", (-2300, -1250), _out(gidx, "Index"), gx_n,
+                label="col")
+    row = _math(ng, "FLOOR", (-2300, -1400),
+                _math(ng, "DIVIDE", (-2450, -1400), _out(gidx, "Index"), gx_n),
+                label="row")
+    odd_row = _math(ng, "FLOORED_MODULO", (-2150, -1550), row, 2.0, label="row 奇偶")
+    odd_col = _math(ng, "FLOORED_MODULO", (-2150, -1700), col, 2.0, label="col 奇偶")
+
+    # XY：方格
+    sq_pos = _xyz(ng, (-1850, -350),
+                  x=_math(ng, "ADD", (-2050, -250),
+                          _math(ng, "MULTIPLY", (-2200, -250), col, step_x),
+                          fit_x_half),
+                  y=_math(ng, "ADD", (-2050, -500),
+                          _math(ng, "MULTIPLY", (-2200, -500), row, step_y),
+                          fit_y_half))
+
+    # Hex：pointy-top / flat-top
+    sqrt3 = math.sqrt(3.0)
+    cell_r = _math(ng, "MULTIPLY", (-2500, -1900), _out(gi, "Cell Size"), 0.5,
+                   label="R = D/2")
+    p_dx = _math(ng, "MULTIPLY", (-2350, -1850), cell_r, sqrt3, label="√3·R")
+    p_dy = _math(ng, "MULTIPLY", (-2350, -2000), cell_r, 1.5, label="1.5·R")
+    f_dx = _math(ng, "MULTIPLY", (-2350, -2150), cell_r, 1.5)
+    f_dy = _math(ng, "MULTIPLY", (-2350, -2300), cell_r, sqrt3)
+    p_x = _math(ng, "ADD", (-2050, -1850),
+                _math(ng, "MULTIPLY", (-2200, -1850), col, p_dx),
+                _math(ng, "MULTIPLY", (-2200, -2000), odd_row,
+                      _math(ng, "MULTIPLY", (-2350, -2000), p_dx, 0.5)))
+    p_y = _math(ng, "MULTIPLY", (-2050, -2100), row, p_dy)
+    f_x = _math(ng, "MULTIPLY", (-2050, -2250), col, f_dx)
+    f_y = _math(ng, "ADD", (-2050, -2400),
+                _math(ng, "MULTIPLY", (-2200, -2400), row, f_dy),
+                _math(ng, "MULTIPLY", (-2200, -2550), odd_col,
+                      _math(ng, "MULTIPLY", (-2350, -2550), f_dy, 0.5)))
+    hex_x = _switch(ng, (-1850, -1900), "FLOAT", _out(gi, "Flat Top"), p_x, f_x)
+    hex_y = _switch(ng, (-1850, -2150), "FLOAT", _out(gi, "Flat Top"), p_y, f_y)
+    hex_pos = _xyz(ng, (-1650, -2000), x=hex_x, y=hex_y)
+
+    # Triangle：邊長 = Step，列交錯半格
+    t_dx = _out(gi, "Step")
+    t_dy = _math(ng, "MULTIPLY", (-2350, -2800), _out(gi, "Step"), sqrt3 / 2.0,
+                 label="√3/2·Step")
+    t_x = _math(ng, "ADD", (-2050, -2850),
+                _math(ng, "MULTIPLY", (-2200, -2850), col, t_dx),
+                _math(ng, "MULTIPLY", (-2200, -3000), odd_row,
+                      _math(ng, "MULTIPLY", (-2350, -3000), t_dx, 0.5)))
+    t_y = _math(ng, "MULTIPLY", (-2050, -3100), row, t_dy)
+    tri_pos = _xyz(ng, (-1850, -2950), x=t_x, y=t_y)
+
+    grid_pos = _index_switch(ng, (-1500, -1500), "VECTOR", _out(gi, "Grid Type"),
+                             [sq_pos, hex_pos, tri_pos], label="Grid Type")
+    g_total = _math(ng, "MULTIPLY", (-1300, -1000), gx_n, gy_n, label="Nx·Ny")
+    g_pts = _node(ng, "GeometryNodePoints", (-1050, -1000), label="Points", width=160)
+    _link(ng, g_total, _in(g_pts, "Count"))
+    _link(ng, grid_pos, _in(g_pts, "Position"))
+    grid_geom = _store_orientation(ng, _out(g_pts, "Points"),
+                                   _xyz(ng, (-850, -850)),
+                                   _xyz(ng, (-850, -1050), x=1.0),
+                                   _xyz(ng, (-850, -1250), z=1.0),
+                                   (-850, -900))
+    _frame(ng, "③-B Grid　XY / Hex / Triangle", C_LAYOUT, list(ng.nodes)[start:])
 
     # Radial ---------------------------------------------------------------
     start = _section(ng)
@@ -521,7 +569,7 @@ def build(name=NAME):
                          y=size_sep.outputs["Y"]),
                     _xyz(ng, (-2450, -1930)), label="XY 對角（Gap 用）")
     curve_gap = _math(ng, "ADD", (-2100, -1800), ext_xy, _out(gi, "Gap"))
-    curve_step = _index_switch(ng, (-1900, -1850), "FLOAT", _out(gi, "Spacing"),
+    curve_step = _index_switch(ng, (-1900, -1850), "FLOAT", _out(gi, "Spacing Mode"),
                                [_out(gi, "Step"), curve_gap, 0.0], label="曲線間距")
     resample_len = _node(ng, "GeometryNodeResampleCurve", (-1700, -1800),
                          label="Resample 長度", width=180, mode="LENGTH")
@@ -531,7 +579,7 @@ def build(name=NAME):
                          label="Resample 數量", width=180, mode="COUNT")
     _link(ng, _out(curve_info, "Geometry"), _in(resample_cnt, "Curve"))
     _link(ng, _out(gi, "Count"), _in(resample_cnt, "Count"))
-    curve_fit = _compare(ng, (-1900, -2100), "EQUAL", _out(gi, "Spacing"), 2,
+    curve_fit = _compare(ng, (-1900, -2100), "EQUAL", _out(gi, "Spacing Mode"), 2,
                          data_type="INT", label="Fit?")
     curve_res = _switch(ng, (-1500, -1900), "GEOMETRY", curve_fit,
                         _out(resample_len, "Curve"), _out(resample_cnt, "Curve"),
@@ -805,8 +853,10 @@ def build(name=NAME):
                          label="終點 − 1"),
                    t)
     grad_s = _math(ng, "ADD", (1450, -1350), grad_s, 1.0, label="1 → 終點")
-    factor = _math(ng, "MULTIPLY", (1600, -1150), _out(rnd_s, "Value"), grad_s,
-                   label="大小倍率")
+    factor = _math(ng, "MULTIPLY", (1600, -1150),
+                   _math(ng, "MULTIPLY", (1450, -1150), _out(rnd_s, "Value"), grad_s,
+                         label="隨機 × 漸變"),
+                   _out(gi, "Unit Scale"), label="大小倍率")
 
     odd = _math(ng, "FLOORED_MODULO", (1100, -1550), _out(idx_v, "Index"), 2.0,
                 label="奇偶")

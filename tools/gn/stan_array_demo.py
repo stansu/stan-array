@@ -1,11 +1,11 @@
-"""Render the Array demo scenes (headless).
+"""Render the Stan Array demo scenes (headless).
 
-    blender -b --factory-startup --python tools/gn/array_demo.py -- \
+    blender -b --factory-startup --python tools/gn/stan_array_demo.py -- \
         --asset assets/geometry_nodes.blend --out demo
 
-Each scene is built from scratch, the Array node group is appended from the
-asset file, and the result is rendered with Cycles (CPU). Also writes a
-combined contact sheet demo/array_contact.png.
+Each scene is built from scratch, the Stan Array node group is appended from
+the asset file, and the result is rendered with Cycles (CPU). Run
+tools/gn/contact_sheet.py (system Python + Pillow) for the combined sheet.
 """
 
 import argparse
@@ -20,7 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
 DEFAULT_OUT = os.path.join(WORKSPACE, "demo")
-GROUP = "Array"
+GROUP = "Stan Array"
 
 
 def _args():
@@ -182,7 +182,7 @@ def scene_fence(ng):
 
     host = empty_host("Fence")
     apply_array(host, ng, {
-        "Mode": 0, "Direction": (1, 0, 0), "Count": 17, "Spacing": 1,
+        "Mode": 0, "Direction": (1, 0, 0), "Count": 17, "Spacing Mode": 1,
         "Gap": 0.075, "Unit From Collection": False,
     })
     # 把 baluster 放進 host 的 modifier 需要 host 本身有幾何：改用 mesh 當 host
@@ -216,7 +216,7 @@ def scene_tiles(ng):
     host = tile
     host.rotation_euler = (math.radians(90), 0, 0)
     apply_array(host, ng, {
-        "Mode": 1, "Count X": 9, "Count Y": 7, "Spacing": 1, "Gap": 0.015,
+        "Mode": 1, "Count X": 9, "Count Y": 7, "Spacing Mode": 1, "Gap": 0.015,
     })
     bpy.context.view_layer.update()
 
@@ -316,7 +316,7 @@ def scene_bracelet(ng):
     curve.location = (0, 0, 0.62)
 
     apply_array(host, ng, {
-        "Mode": 3, "Curve": curve, "Spacing": 0, "Step": 0.115,
+        "Mode": 3, "Curve": curve, "Spacing Mode": 0, "Step": 0.115,
         "Random Scale": 0.0, "Gradient Scale": 1.0,
     })
     bpy.context.view_layer.update()
@@ -413,48 +413,94 @@ def scene_locators(ng):
         "Mode": 5, "Point Collection": stones, "Align": 0,
     })
     bpy.context.view_layer.update()
-    camera((2.55, -2.9, 1.55), (1.25, 0.1, 0.22), 50)
+    camera((2.8, -3.2, 1.65), (1.35, 0.1, 0.22), 50)
     area_light((2.6, -2.2, 2.8), (1.2, 0, 0.3), 4.0, 200)
+
+
+def scene_hex(ng):
+    setup_world(strength=0.55, color=(0.05, 0.05, 0.06))
+    setup_light(angle=0.3, energy=3.2, rot=(0.7, 0.1, 0.8))
+    floor(size=10, color=(0.18, 0.17, 0.16), rough=0.85)
+
+    tiles = bpy.data.collections.new("Hex Tiles")
+    bpy.context.scene.collection.children.link(tiles)
+    palette = [("Terracotta", (0.68, 0.34, 0.21)),
+               ("Cream", (0.82, 0.76, 0.64)),
+               ("Teal", (0.16, 0.45, 0.42))]
+    for i, (name, color) in enumerate(palette):
+        bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.112, depth=0.03,
+                                            location=(0, 0, 0))
+        o = bpy.context.object
+        o.name = "Hex %d" % i
+        o.data.materials.append(material("Hex " + name, color, 0.4))
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        tiles.objects.link(o)
+
+    host = empty_host("Hex Wall")
+    host.rotation_euler = (math.radians(90), 0, 0)
+    apply_array(host, ng, {
+        "Mode": 1, "Grid Type": 1, "Count X": 12, "Count Y": 10,
+        "Cell Size": 0.22, "Flat Top": False,
+        "Unit From Collection": True, "Collection": tiles, "Collection Count": 3,
+        "Seed": 5,
+    })
+    bpy.context.view_layer.update()
+    box("Hex Backing", (2.42, 0.05, 1.90), (1.02, 0.06, 0.86),
+        material("Hex Backing", (0.10, 0.10, 0.11), 0.8))
+    box("Hex Frame", (2.52, 0.07, 0.06), (1.02, 0.03, -0.05),
+        material("Hex Frame", (0.09, 0.09, 0.09), 0.6))
+    camera((2.95, -3.35, 1.55), (1.05, 0, 0.85), 50)
+    area_light((2.6, -2.2, 2.8), (1.0, 0, 1.0), 4.0, 230)
+
+
+def scene_tri(ng):
+    setup_world(strength=0.5, color=(0.04, 0.045, 0.05))
+    setup_light(angle=0.3, energy=2.8, rot=(0.65, 0.1, 0.75))
+    floor(size=10, color=(0.14, 0.14, 0.15), rough=0.85)
+
+    studs = bpy.data.collections.new("Tri Studs")
+    bpy.context.scene.collection.children.link(studs)
+    palette = [("Brass", (0.72, 0.55, 0.26), 0.3, 0.8),
+               ("Steel", (0.55, 0.58, 0.60), 0.35, 0.7),
+               ("Copper", (0.62, 0.30, 0.18), 0.35, 0.6)]
+    for i, (name, color, rough, metal) in enumerate(palette):
+        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.055, radius2=0.0,
+                                        depth=0.09, location=(0, 0, 0))
+        o = bpy.context.object
+        o.name = "Stud %d" % i
+        o.data.materials.append(material("Stud " + name, color, rough, metal))
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        studs.objects.link(o)
+
+    host = empty_host("Tri Panel")
+    host.rotation_euler = (math.radians(90), 0, 0)
+    apply_array(host, ng, {
+        "Mode": 1, "Grid Type": 2, "Count X": 15, "Count Y": 11,
+        "Step": 0.175,
+        "Unit From Collection": True, "Collection": studs, "Collection Count": 3,
+        "Seed": 8,
+    })
+    bpy.context.view_layer.update()
+    box("Tri Backing", (2.60, 0.06, 1.75), (1.15, 0.055, 0.85),
+        material("Tri Backing", (0.07, 0.075, 0.08), 0.65))
+    box("Tri Frame", (2.70, 0.08, 0.05), (1.15, 0.02, -0.03),
+        material("Tri Frame", (0.12, 0.12, 0.13), 0.5))
+    camera((3.3, -3.7, 1.65), (1.15, 0, 0.82), 50)
+    area_light((2.4, -2.0, 2.6), (1.1, 0, 0.9), 3.5, 200)
 
 
 SCENES = {
     "fence": scene_fence,
     "tiles": scene_tiles,
+    "hex": scene_hex,
+    "tri": scene_tri,
     "lamp": scene_lamp,
     "bracelet": scene_bracelet,
     "scatter": scene_scatter,
     "locators": scene_locators,
 }
-
-
-def contact_sheet(out_dir, names):
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        return None
-    images = []
-    for name in names:
-        path = os.path.join(out_dir, "array_%s.png" % name)
-        if os.path.exists(path):
-            images.append((name, Image.open(path).convert("RGB")))
-    if not images:
-        return None
-    w, h = images[0][1].size
-    cols = 3 if len(images) > 4 else 2
-    rows = (len(images) + cols - 1) // cols
-    pad = 8
-    sheet = Image.new("RGB", (cols * w + (cols + 1) * pad,
-                              rows * h + (rows + 1) * pad), (18, 18, 20))
-    draw = ImageDraw.Draw(sheet)
-    for i, (name, img) in enumerate(images):
-        x = pad + (i % cols) * (w + pad)
-        y = pad + (i // cols) * (h + pad)
-        sheet.paste(img, (x, y))
-        draw.text((x + 10, y + 8), name.upper(), fill=(235, 235, 235))
-    path = os.path.join(out_dir, "array_contact.png")
-    sheet.save(path)
-    print("CONTACT", path)
-    return path
 
 
 def main():
@@ -464,13 +510,11 @@ def main():
     for name in wanted:
         ng = reset(args.asset)
         SCENES[name](ng)
-        render(os.path.join(args.out, "array_%s.png" % name), args.res, args.samples)
+        render(os.path.join(args.out, "stan_%s.png" % name), args.res, args.samples)
         if name == "fence":
-            blend = os.path.join(args.out, "array_demo.blend")
+            blend = os.path.join(args.out, "stan_array_demo.blend")
             bpy.ops.wm.save_as_mainfile(filepath=blend, compress=True)
             print("SAVED", blend)
-    if len(wanted) > 1:
-        contact_sheet(args.out, wanted)
     return 0
 
 

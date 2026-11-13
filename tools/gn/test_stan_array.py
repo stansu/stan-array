@@ -1,4 +1,4 @@
-"""Headless smoke tests for the Array node group.
+"""Headless smoke tests for the Stan Array node group.
 
     blender -b --factory-startup --python tools/gn/test_array.py
 
@@ -16,7 +16,7 @@ import bpy
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import array_gn  # noqa: E402
+import stan_array as sa  # noqa: E402
 
 TOL = 1e-3
 FAILS = []
@@ -89,11 +89,12 @@ def samples(host):
 DEFAULT = {
     "Mode": 0, "Unit From Collection": False, "Collection": None,
     "Collection Count": 1, "Direction": (1, 0, 0), "Count": 5, "Count X": 5,
-    "Count Y": 5, "Spacing": 0, "Step": 1.0, "Gap": 0.1, "Length": 5.0,
+    "Count Y": 5, "Grid Type": 0, "Cell Size": 0.25, "Flat Top": False,
+    "Spacing Mode": 0, "Step": 1.0, "Gap": 0.1, "Length": 5.0,
     "Length Y": 5.0, "Radius": 1.0, "Arc": 360.0, "Start Angle": 0.0,
     "Curve": None, "Surface": None, "Mesh Mode": 0, "Density": 10.0,
     "Point Collection": None, "Align": 0, "Forward Axis": 1, "Up Axis": 2,
-    "Random Offset": (0, 0, 0), "Random Rotate": (0, 0, 0), "Random Scale": 0.0,
+    "Random Offset": (0, 0, 0), "Random Rotate": (0, 0, 0), "Unit Scale": 1.0, "Random Scale": 0.0,
     "Seed": 0, "Mirror": False, "Mirror Axis": 0, "Gradient Scale": 1.0,
     "Gradient Rotate": 0.0, "Realize": False,
 }
@@ -102,7 +103,7 @@ DEFAULT = {
 def main():
     global ng
     fresh()
-    ng = array_gn.build()
+    ng = sa.build()
     host, mod = host_cube()
 
     reset(mod)
@@ -114,14 +115,14 @@ def main():
           str([g["pos"] for g in got]))
 
     reset(mod)
-    setv(mod, "Spacing", 1)
+    setv(mod, "Spacing Mode", 1)
     setv(mod, "Gap", 0.2)
     got = samples(host)
     check("linear gap (size 0.4 + gap 0.2 = 0.6)",
           close(got[-1]["pos"], (2.4, 0, 0)), str(got[-1]["pos"]))
 
     reset(mod)
-    setv(mod, "Spacing", 2)
+    setv(mod, "Spacing Mode", 2)
     got = samples(host)
     check("linear fit: edges 0..5",
           close(got[0]["pos"], (0.2, 0, 0)) and close(got[-1]["pos"], (4.8, 0, 0)),
@@ -136,6 +137,30 @@ def main():
     check("grid 3x2 starts at origin",
           positions == [(0, 0, 0), (0, 1, 0), (1, 0, 0), (1, 1, 0),
                         (2, 0, 0), (2, 1, 0)], str(positions))
+
+    # grids: hex and triangle share the staggered lattice code
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Count X", 3)
+    setv(mod, "Count Y", 2)
+    setv(mod, "Grid Type", 1)
+    setv(mod, "Cell Size", 0.25)
+    got = samples(host)
+    hex_expected = [(0, 0, 0), (0.2165, 0, 0), (0.433, 0, 0),
+                    (0.1083, 0.1875, 0), (0.3248, 0.1875, 0), (0.5413, 0.1875, 0)]
+    check("hex pointy positions",
+          all(close(g["pos"], e) for g, e in zip(got, hex_expected)),
+          str([g["pos"] for g in got]))
+    setv(mod, "Flat Top", True)
+    got = samples(host)
+    check("hex flat-top first row",
+          close(got[1]["pos"], (0.1875, 0.1083, 0)), str(got[1]["pos"]))
+    setv(mod, "Flat Top", False)
+    setv(mod, "Grid Type", 2)
+    setv(mod, "Step", 0.2)
+    got = samples(host)
+    check("triangle lattice", close(got[3]["pos"], (0.1, 0.1732, 0)),
+          str(got[3]["pos"]))
 
     reset(mod)
     setv(mod, "Mode", 2)
@@ -159,7 +184,7 @@ def main():
     reset(mod)
     setv(mod, "Mode", 3)
     setv(mod, "Curve", curve)
-    setv(mod, "Spacing", 2)
+    setv(mod, "Spacing Mode", 2)
     got = samples(host)
     check("curve fit 5 points", len(got) == 5 and close(got[-1]["pos"], (4, 0, 0)),
           str([g["pos"] for g in got]))
