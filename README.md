@@ -75,6 +75,9 @@ of bands. The unit triangle must have its **centroid at the origin** and its ape
 pointing **+Y** (Blender's 3-sided cylinder is already like this); down cells are
 flipped automatically.
 
+If you used Triangle as a plain point lattice in **v2.0.0**, reproduce it with
+`Grid Type = Hex` and `Cell Size = Step / 0.866`.
+
 ## Spacing (`Spacing Mode`)
 
 | Value | Rule | Formula |
