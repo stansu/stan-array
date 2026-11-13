@@ -493,11 +493,56 @@ def scene_tri(ng):
     area_light((2.5, -2.0, 2.7), (0.9, 0, 0.85), 3.8, 220)
 
 
+
+def scene_brick(ng):
+    setup_world(strength=0.5, color=(0.04, 0.045, 0.05))
+    setup_light(angle=0.3, energy=2.9, rot=(0.7, 0.1, 0.85))
+    floor(size=10, color=(0.14, 0.13, 0.12), rough=0.9)
+
+    bricks = bpy.data.collections.new("Bricks")
+    bpy.context.scene.collection.children.link(bricks)
+    palette = [("Brick Red", (0.42, 0.11, 0.07)),
+               ("Brick Salmon", (0.55, 0.20, 0.13)),
+               ("Brick Dark", (0.32, 0.08, 0.06))]
+    for i, (name, color) in enumerate(palette):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
+        o = bpy.context.object
+        o.name = "Brick %d" % i
+        o.scale = (0.21, 0.065, 0.05)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        bev = o.modifiers.new("Bevel", "BEVEL")
+        bev.width = 0.004
+        bev.segments = 2
+        bpy.ops.object.modifier_apply(modifier=bev.name)
+        o.data.materials.append(material(name, color, 0.75))
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        bricks.objects.link(o)
+
+    host = empty_host("Brick Wall")
+    host.rotation_euler = (math.radians(90), 0, 0)
+    apply_array(host, ng, {
+        "Mode": 1, "Grid Type": 3, "Count X": 10, "Count Y": 17,
+        "Spacing Mode": 1, "Gap": 0.008,
+        "Stagger": 0.5, "Stagger Repeat": 1,
+        "Unit From Collection": True, "Collection": bricks, "Collection Count": 3,
+        "Seed": 6,
+    })
+    bpy.context.view_layer.update()
+    box("Mortar", (2.55, 0.05, 1.45), (1.10, 0.035, 0.60),
+        material("Mortar", (0.52, 0.50, 0.46), 0.9))
+    box("Sill", (2.70, 0.16, 0.06), (1.10, 0.02, -0.09),
+        material("Sill", (0.35, 0.33, 0.30), 0.7))
+    camera((2.85, -3.35, 1.55), (1.10, 0, 0.60), 52)
+    area_light((2.4, -2.2, 2.7), (1.1, 0, 0.7), 3.8, 210)
+
+
 SCENES = {
     "fence": scene_fence,
     "tiles": scene_tiles,
     "hex": scene_hex,
     "tri": scene_tri,
+    "brick": scene_brick,
     "lamp": scene_lamp,
     "bracelet": scene_bracelet,
     "scatter": scene_scatter,

@@ -3,7 +3,7 @@
 A general-purpose **Geometry Nodes** array modifier for Blender — one node group
 with six layouts, three lattice types inside Grid, and three spacing rules:
 
-`Linear` · `Grid (XY / Hex / Triangle)` · `Radial` · `Curve` · `Mesh` ·
+`Linear` · `Grid (XY / Hex / Triangle / Brick)` · `Radial` · `Curve` · `Mesh` ·
 `Collection` — with `Step` / `Gap` / `Fit` spacing, orientation control, random
 variation, alternating mirror, and gradient.
 
@@ -38,7 +38,7 @@ Link it.
 | Mode | Layout | Point source | Main inputs |
 |---|---|---|---|
 | `0` | **Linear** | a line along `Direction` | `Count`, `Direction`, `Step`/`Gap`/`Length` |
-| `1` | **Grid** | XY grid, hex lattice or triangular lattice | `Count X`, `Count Y`, `Grid Type`, `Cell Size`, `Flat Top` |
+| `1` | **Grid** | XY grid, hex lattice, triangle tiling or brick bond | `Count X`, `Count Y`, `Grid Type`, `Cell Size`, `Flat Top`, `Stagger` |
 | `2` | **Radial** | a circle / arc | `Count`, `Radius`, `Arc`, `Start Angle` |
 | `3` | **Curve** | points along a Curve object | `Curve`, `Count`, `Step`/`Gap` |
 | `4` | **Mesh** | vertices / edge midpoints / face centres / random surface | `Surface`, `Mesh Mode`, `Density` |
@@ -54,6 +54,7 @@ Link it.
 | `0` **XY** | square | `Step` per axis, or Gap / Fit | none |
 | `1` **Hex** | honeycomb | `Cell Size` (hex diameter) | `Flat Top` = false: odd **rows** shift `dx/2`; true: odd **columns** shift `dy/2` |
 | `2` **Triangle** | triangular **tiling** — triangle centroids on a honeycomb | `Step` = triangle side | every other cell rotated 180° (up/down) |
+| `3` **Brick** | staggered brick courses | `Step`/`Gap`/`Fit` per axis | `Stagger` × brick length, advanced every `Stagger Repeat` courses |
 
 Hex math (`R = Cell Size / 2`):
 
@@ -77,6 +78,17 @@ flipped automatically.
 
 If you used Triangle as a plain point lattice in **v2.0.0**, reproduce it with
 `Grid Type = Hex` and `Cell Size = Step / 0.866`.
+
+Brick positions:
+
+```
+x = col·stepX + (floor(row / Stagger Repeat) · Stagger · stepX  mod  stepX)
+y = row·stepY
+```
+
+`Stagger = 0` is stack bond, `0.5` running bond, `0.333` a 1/3 bond, `0.25` a
+1/4 bond. `Stagger Repeat` keeps the same offset for N courses before advancing
+(1 = every course). Brick uses the same `Step` / `Gap` / `Fit` as XY.
 
 ## Spacing (`Spacing Mode`)
 
@@ -149,6 +161,8 @@ Applied **after** instancing, so it composes with each unit's own orientation:
 | `Grid Type` | Int | 0 | 0 XY · 1 Hex · 2 Triangle |
 | `Cell Size` | Float | 0.25 | hex diameter |
 | `Flat Top` | Bool | false | hex orientation |
+| `Stagger` | Float | 0.5 | Brick offset as a fraction of `stepX` (0 = stack, 0.5 = 1/2, 0.333 = 1/3) |
+| `Stagger Repeat` | Int | 1 | courses per offset step (1 = every course, 2 = every two) |
 | `Spacing Mode` | Int | 0 | 0 Step · 1 Gap · 2 Fit |
 | `Step` | Float | 1.0 | metres (also Triangle side) |
 | `Gap` | Float | 0.1 | metres |
@@ -171,7 +185,7 @@ export, or shading that needs unique geometry).
 
 ## Demo scenes
 
-`demo/stan_*.png` are rendered by `tools/gn/stan_array_demo.py`:
+`demo/stan_*.png` (nine scenes) are rendered by `tools/gn/stan_array_demo.py`:
 
 | Scene | Shows |
 |---|---|
@@ -179,6 +193,7 @@ export, or shading that needs unique geometry).
 | [tiles](demo/stan_tiles.png) | Grid XY + Gap on a wall |
 | [hex](demo/stan_hex.png) | Grid Type = Hex, three tiles picked at random |
 | [tri](demo/stan_tri.png) | Grid Type = Triangle — a real triangular tiling with alternating up/down cells |
+| [brick](demo/stan_brick.png) | Grid Type = Brick — 1/2 running bond with mortar and mixed brick colours |
 | [lamp](demo/stan_lamp.png) | Radial with a unit offset from its origin |
 | [bracelet](demo/stan_bracelet.png) | Curve with a cyclic path |
 | [scatter](demo/stan_scatter.png) | Mesh → Surface, normals + random variation |
@@ -187,6 +202,48 @@ export, or shading that needs unique geometry).
 Open [`demo/stan_array_demo.blend`](demo/stan_array_demo.blend) to inspect the
 fence scene: the host carries the `Stan Array` modifier with its inputs already
 set.
+
+## Common brick & tile patterns
+
+`Grid Type = Brick` covers every pattern that is a **repeating course offset**.
+The value of `Stagger` is a fraction of one brick/tile length:
+
+| Pattern | `Grid Type` | `Stagger` | `Stagger Repeat` | Typical use |
+|---|---|---|---|---|
+| Stack bond | Brick | `0` | `1` | modern tiles, stack bond feature walls |
+| Running bond 1/2 | Brick | `0.5` | `1` | brick walls, subway tile |
+| 1/3 bond | Brick | `0.333` | `1` | 300×600 large-format tiles |
+| 1/4 bond | Brick | `0.25` | `1` | 600×1200 tiles, plank tile |
+| 1/5 / 1/6 bond | Brick | `0.2` / `0.167` | `1` | long planks, minimal lippage |
+| Offset every 2 courses | Brick | `0.5` | `2` | decorative block work |
+| Hexagon | Hex | – | – | honeycomb tile, 200 mm across flats |
+| Triangle | Triangle | – | – | triangle tiling, `Step` = side |
+| Penny round / mosaic | XY | – | – | circles in a square grid, use `Gap` |
+| Diagonal / 45° | XY or Brick | – | – | rotate the **host object** 45° |
+
+Patterns that are **not** a single course offset need a different setup:
+
+- **Herringbone / chevron** — bricks alternate 90°; build one array of horizontal
+  and one of vertical bricks (or two rotated hosts) and offset them.
+- **Basket weave** — 2×2 blocks alternate orientation; same two-array trick.
+- **English / Flemish bond** — header and stretcher courses alternate; use two
+  arrays (or a Collection with two brick lengths) rather than `Stagger`.
+
+Typical real-world sizes (use metres in Blender; joints are the `Gap`):
+
+| Material | Unit size | Joint |
+|---|---|---|
+| UK brick | 215 × 65 × 102.5 mm | 10 mm |
+| US modular brick | 194 × 57 × 92 mm | 10 mm |
+| Subway tile | 75 × 150 mm | 2–3 mm |
+| Large-format tile | 300 × 600 mm | 2–3 mm, 1/3 bond |
+| Plank tile | 150 × 900 mm | 2 mm, 1/3 or random |
+| Hex tile | 200 mm across flats | 3 mm |
+| Mosaic | 25 × 25 mm | 2 mm |
+
+For brick, author the brick mesh at its real size and use `Gap` = joint; the
+`Gap` mode measures the unit bounding box, so the pitch becomes
+`brick + joint` automatically.
 
 ## Limits / gotchas
 
@@ -226,7 +283,7 @@ python3 tools/gn/gn.py apply --group stan --object "Host" \
 # render the eight demo scenes + contact sheet
 python3 tools/gn/gn.py stan-demo --samples 32 --res 760
 
-# smoke tests (20 checks: every mode, lattice, spacing, align, mirror, gradient, realize)
+# smoke tests (22 checks: every mode, lattice, brick bond, spacing, align, mirror, gradient, realize)
 blender -b --factory-startup --python tools/gn/test_stan_array.py
 ```
 
@@ -261,7 +318,7 @@ MIT — see [LICENSE](LICENSE).
 `assets/geometry_nodes.blend` → `NodeTree` → `Stan Array`，加到物件上，選 **Mode**：
 
 - `0` 線性（Direction 方向）
-- `1` 網格（**Grid Type**：`0` XY 方格、`1` Hex 蜂巢、`2` Triangle 三角形貼磚）
+- `1` 網格（**Grid Type**：`0` XY 方格、`1` Hex 蜂巢、`2` Triangle 三角形貼磚、`3` Brick 磚牆）
 - `2` 環狀（Radius、Arc、Start Angle）
 - `3` 曲線（指定 Curve 物件）
 - `4` Mesh（頂點／邊中點／面中心／表面隨機；Surface 留空用自己）
@@ -275,6 +332,10 @@ MIT — see [LICENSE](LICENSE).
 每隔一格自動轉 180°（up/down 交錯），所以三角形會密合。`Step` 是三角形邊長，
 `Count X` 是每帶的三角形數、`Count Y` 是帶數。單元的**質心要在原點、頂點朝 +Y**
 （Blender 的 3 邊柱體本來就是這樣）。
+
+**Grid Type = Brick**：`Stagger` 是磚長的錯位比例（`0` 對齊、`0.5` 1/2、`0.333` 1/3、
+`0.25` 1/4），`Stagger Repeat` 是每幾列推進一次（1 = 每列）。Brick 跟 XY 一樣吃
+`Step` / `Gap` / `Fit`；用 `Gap` 當灰縫最方便，pitch 會自動是「磚 + 縫」。
 
 Hex/Triangle 不受 `Spacing Mode` 影響，間距由 `Cell Size` / `Step` 決定。
 
@@ -302,7 +363,7 @@ Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` �
 
 ```bash
 python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend
-blender -b --factory-startup --python tools/gn/test_stan_array.py   # 20 項檢查
+blender -b --factory-startup --python tools/gn/test_stan_array.py   # 22 項檢查
 python3 tools/gn/gn.py stan-demo                   # 八個示範場景 + contact sheet
 ```
 

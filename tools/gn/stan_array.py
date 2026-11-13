@@ -284,13 +284,18 @@ def build(name=NAME):
          desc="Linear / Radial / Curve(Fit) 的數量")
     sock("Count X", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 X 數量")
     sock("Count Y", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 Y 數量")
-    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
-         desc="0 XY 方格 ｜ 1 Hex 蜂巢 ｜ 2 Triangle 三角晶格")
+    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=3,
+         desc="0 XY 方格 ｜ 1 Hex 蜂巢 ｜ 2 Triangle 三角貼磚 ｜ 3 Brick 磚牆")
     sock("Cell Size", "NodeSocketFloat", 0.25, p_main, minv=0.0001,
          subtype="DISTANCE",
          desc="Hex 的六角外徑（頂點到頂點）；Flat Top 時整個晶格轉 90°")
     sock("Flat Top", "NodeSocketBool", False, p_main,
          desc="Hex 的平頂方向（False = pointy-top，True = flat-top）")
+    sock("Stagger", "NodeSocketFloat", 0.5, p_main, minv=0.0, maxv=1.0,
+         subtype="FACTOR",
+         desc="Brick 的錯位比例：0 = 對齊（stack），0.5 = 1/2，0.333 = 1/3，0.25 = 1/4…")
+    sock("Stagger Repeat", "NodeSocketInt", 1, p_main, minv=1, maxv=64,
+         desc="Brick 每幾列推進一次錯位（1 = 每列；2 = 每兩列）")
     sock("Spacing Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
          desc="0 Step 固定間距 ｜ 1 Gap 依尺寸貼齊留縫 ｜ 2 Fit 給總長均分"
               "（Hex / Triangle 用自己的 Cell Size / Step，不受此項影響）")
@@ -533,8 +538,29 @@ def build(name=NAME):
     grid_rot = _switch(ng, (-1300, -2900), "VECTOR", grid_is_tri,
                        _xyz(ng, (-1500, -3000)), tri_rot, label="格子旋轉")
 
+    # Brick：每列（或每 N 列）錯開 Stagger 個磚長
+    brick_rep = _math(ng, "MAXIMUM", (-2350, -3500), _out(gi, "Stagger Repeat"), 1.0,
+                      label="repeat ≥ 1")
+    brick_row = _math(ng, "FLOOR", (-2150, -3500),
+                      _math(ng, "DIVIDE", (-2300, -3500), row, brick_rep),
+                      label="第幾段")
+    brick_shift = _math(ng, "FLOORED_MODULO", (-1950, -3500),
+                        _math(ng, "MULTIPLY", (-2100, -3500), brick_row,
+                              _math(ng, "MULTIPLY", (-2250, -3500),
+                                    _out(gi, "Stagger"), step_x)),
+                        step_x, label="錯位量")
+    brick_pos = _xyz(ng, (-1650, -3500),
+                     x=_math(ng, "ADD", (-1850, -3450),
+                             _math(ng, "ADD", (-2000, -3450),
+                                   _math(ng, "MULTIPLY", (-2150, -3450), col, step_x),
+                                   fit_x_half),
+                             brick_shift),
+                     y=_math(ng, "ADD", (-1850, -3600),
+                             _math(ng, "MULTIPLY", (-2000, -3600), row, step_y),
+                             fit_y_half))
+
     grid_pos = _index_switch(ng, (-1500, -1500), "VECTOR", _out(gi, "Grid Type"),
-                             [sq_pos, hex_pos, tri_pos], label="Grid Type")
+                             [sq_pos, hex_pos, tri_pos, brick_pos], label="Grid Type")
     g_total = _math(ng, "MULTIPLY", (-1300, -1000), gx_n, gy_n, label="Nx·Ny")
     g_pts = _node(ng, "GeometryNodePoints", (-1050, -1000), label="Points", width=160)
     _link(ng, g_total, _in(g_pts, "Count"))

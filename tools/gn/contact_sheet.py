@@ -8,7 +8,7 @@
 import argparse
 import os
 
-ORDER = ["fence", "tiles", "hex", "tri", "lamp", "bracelet", "scatter", "locators"]
+ORDER = ["fence", "tiles", "hex", "tri", "brick", "lamp", "bracelet", "scatter", "locators"]
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     ap.add_argument("--dir", default=os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
         "demo"))
-    ap.add_argument("--cols", type=int, default=4)
+    ap.add_argument("--cols", type=int, default=3)
     ap.add_argument("--out", default="stan_contact.png")
     args = ap.parse_args()
 

@@ -90,7 +90,7 @@ DEFAULT = {
     "Mode": 0, "Unit From Collection": False, "Collection": None,
     "Collection Count": 1, "Direction": (1, 0, 0), "Count": 5, "Count X": 5,
     "Count Y": 5, "Grid Type": 0, "Cell Size": 0.25, "Flat Top": False,
-    "Spacing Mode": 0, "Step": 1.0, "Gap": 0.1, "Length": 5.0,
+    "Stagger": 0.5, "Stagger Repeat": 1, "Spacing Mode": 0, "Step": 1.0, "Gap": 0.1, "Length": 5.0,
     "Length Y": 5.0, "Radius": 1.0, "Arc": 360.0, "Start Angle": 0.0,
     "Curve": None, "Surface": None, "Mesh Mode": 0, "Density": 10.0,
     "Point Collection": None, "Align": 0, "Forward Axis": 1, "Up Axis": 2,
@@ -170,6 +170,27 @@ def main():
           abs(abs(got[1]["rot"][2]) - 180) < 0.1
           and abs(got[0]["rot"][2]) < 0.1,
           str([g["rot"][2] for g in got]))
+
+    # brick: running bond (1/2) and 1/3 offset
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 3)
+    setv(mod, "Count X", 4)
+    setv(mod, "Count Y", 4)
+    setv(mod, "Step", 1.0)
+    got = samples(host)
+    brick_expected = {
+        (0, 0), (1, 0), (2, 0), (3, 0),
+        (0.5, 1), (1.5, 1), (2.5, 1), (3.5, 1),
+        (0, 2), (1, 2), (2, 2), (3, 2),
+        (0.5, 3), (1.5, 3), (2.5, 3), (3.5, 3),
+    }
+    got_xy = {(round(g["pos"][0], 4), round(g["pos"][1], 4)) for g in got}
+    check("brick 1/2 running bond", got_xy == brick_expected, str(sorted(got_xy)))
+    setv(mod, "Stagger", 1.0 / 3.0)
+    got = samples(host)
+    xs = sorted(round(g["pos"][0], 3) for g in got if abs(g["pos"][1] - 1.0) < 1e-4)
+    check("brick 1/3 offset", xs == [0.333, 1.333, 2.333, 3.333], str(xs))
 
     reset(mod)
     setv(mod, "Mode", 2)
