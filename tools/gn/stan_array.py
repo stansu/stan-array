@@ -50,6 +50,7 @@ MESH_NAMES = ["Vertices", "Edges", "Faces", "Surface"]
 ATTR_ROT = "arr_rot"
 ATTR_FWD = "arr_fwd"
 ATTR_NRM = "arr_nrm"
+ATTR_SCALE = "arr_scale"
 
 
 # --------------------------------------------------------------------- helpers
@@ -198,11 +199,18 @@ def _store(ng, geom, name, value, loc, label=None):
     return n.outputs["Geometry"]
 
 
-def _store_orientation(ng, geom, rot, fwd, nrm, loc):
-    """把每點的 基礎旋轉 / 前方 / 上方 存成屬性，選完分支後再讀取。"""
+def _store_orientation(ng, geom, rot, fwd, nrm, loc, scale=None):
+    """把每點的 基礎旋轉 / 前方 / 上方 / 大小 存成屬性，選完分支後再讀取。"""
     g = _store(ng, geom, ATTR_ROT, rot, (loc[0], loc[1] + 240), label="rot")
     g = _store(ng, g, ATTR_FWD, fwd, (loc[0] + 200, loc[1] + 120), label="fwd")
     g = _store(ng, g, ATTR_NRM, nrm, (loc[0] + 400, loc[1]), label="nrm")
+    if scale is None:
+        g = _store(ng, g, ATTR_SCALE, _xyz(ng, (loc[0] + 600, loc[1] - 120),
+                                           x=1.0, y=1.0, z=1.0),
+                   (loc[0] + 600, loc[1] - 120), label="scale")
+    else:
+        g = _store(ng, g, ATTR_SCALE, scale, (loc[0] + 600, loc[1] - 120),
+                   label="scale")
     return g
 
 
@@ -284,8 +292,9 @@ def build(name=NAME):
          desc="Linear / Radial / Curve(Fit) 的數量")
     sock("Count X", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 X 數量")
     sock("Count Y", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 Y 數量")
-    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=3,
-         desc="0 XY 方格 ｜ 1 Hex 蜂巢 ｜ 2 Triangle 三角貼磚 ｜ 3 Brick 磚牆")
+    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=6,
+         desc="0 XY ｜ 1 Hex ｜ 2 Triangle ｜ 3 Brick ｜ 4 Herringbone ｜ "
+              "5 Chevron ｜ 6 Basket Weave")
     sock("Cell Size", "NodeSocketFloat", 0.25, p_main, minv=0.0001,
          subtype="DISTANCE",
          desc="Hex 的六角外徑（頂點到頂點）；Flat Top 時整個晶格轉 90°")
@@ -529,14 +538,9 @@ def build(name=NAME):
                 _math(ng, "MULTIPLY", (-2050, -3250),
                       _math(ng, "ADD", (-2200, -3250), odd_col, 1.0), tri_third))
     tri_pos = _xyz(ng, (-1650, -2950), x=t_x, y=t_y)
-    tri_rot = _xyz(ng, (-1650, -3250),
-                   z=_math(ng, "MULTIPLY", (-1850, -3250), odd_col, math.pi,
-                           label="down → 180°"))
-
-    grid_is_tri = _compare(ng, (-1500, -2800), "EQUAL", _out(gi, "Grid Type"), 2,
-                           data_type="INT", label="Tri?")
-    grid_rot = _switch(ng, (-1300, -2900), "VECTOR", grid_is_tri,
-                       _xyz(ng, (-1500, -3000)), tri_rot, label="格子旋轉")
+    tri_z = _math(ng, "MULTIPLY", (-1850, -3250), odd_col, math.pi,
+                  label="down → 180°")
+    tri_rot = _xyz(ng, (-1650, -3250), z=tri_z)
 
     # Brick：每列（或每 N 列）錯開 Stagger 個磚長
     brick_rep = _math(ng, "MAXIMUM", (-2350, -3500), _out(gi, "Stagger Repeat"), 1.0,
@@ -559,17 +563,108 @@ def build(name=NAME):
                              _math(ng, "MULTIPLY", (-2000, -3600), row, step_y),
                              fit_y_half))
 
+    # Herringbone：4W × 4W cell，8 塊（H/H/H/H + V/V/V/V）
+    hb_i = _out(gidx, "Index")
+    hb_slot = _math(ng, "FLOORED_MODULO", (-2350, -3800), hb_i, 8.0, label="slot")
+    hb_cell = _math(ng, "FLOOR", (-2200, -3800),
+                    _math(ng, "DIVIDE", (-2350, -3800), hb_i, 8.0), label="cell")
+    hb_col = _math(ng, "FLOORED_MODULO", (-2050, -3800), hb_cell, gx_n)
+    hb_row = _math(ng, "FLOOR", (-2050, -3950),
+                   _math(ng, "DIVIDE", (-2200, -3950), hb_cell, gx_n))
+    hb_ox = _index_switch(ng, (-1850, -3750), "FLOAT", hb_slot,
+                          [0.0, 3.0, 2.0, 1.0, 2.0, 1.0, 0.0, 3.0], label="hb ox")
+    hb_oy = _index_switch(ng, (-1850, -3900), "FLOAT", hb_slot,
+                          [0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0], label="hb oy")
+    hb_v = _index_switch(ng, (-1850, -4050), "FLOAT", hb_slot,
+                         [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0], label="hb V?")
+    hb_rot = _math(ng, "MULTIPLY", (-1650, -4200), hb_v, math.pi / 2.0)
+    hb_x = _math(ng, "MULTIPLY", (-1450, -3750),
+                 _math(ng, "ADD", (-1650, -3750),
+                       _math(ng, "ADD", (-1800, -3750),
+                             _math(ng, "MULTIPLY", (-1950, -3750), hb_col, 4.0),
+                             hb_ox),
+                       _switch(ng, (-1700, -3900), "FLOAT", hb_v, 1.0, 0.5)),
+                 size_sep.outputs["Y"], label="hb x")
+    hb_y = _math(ng, "MULTIPLY", (-1450, -3950),
+                 _math(ng, "ADD", (-1650, -3950),
+                       _math(ng, "ADD", (-1800, -3950),
+                             _math(ng, "MULTIPLY", (-1950, -3950), hb_row, 4.0),
+                             hb_oy),
+                       _switch(ng, (-1700, -4050), "FLOAT", hb_v, 0.5, 1.0)),
+                 size_sep.outputs["Y"], label="hb y")
+    hb_pos = _xyz(ng, (-1250, -3850), x=hb_x, y=hb_y)
+
+    # Basket weave：2W × 2W block，H 兩塊疊 / V 兩塊並排，block 棋盤交錯
+    bw_i = _out(gidx, "Index")
+    bw_slot = _math(ng, "FLOORED_MODULO", (-2350, -4400), bw_i, 2.0)
+    bw_block = _math(ng, "FLOOR", (-2200, -4400),
+                     _math(ng, "DIVIDE", (-2350, -4400), bw_i, 2.0))
+    bw_col = _math(ng, "FLOORED_MODULO", (-2050, -4400), bw_block, gx_n)
+    bw_row = _math(ng, "FLOOR", (-2050, -4550),
+                   _math(ng, "DIVIDE", (-2200, -4550), bw_block, gx_n))
+    bw_par = _math(ng, "FLOORED_MODULO", (-1900, -4550),
+                   _math(ng, "ADD", (-2050, -4550), bw_col, bw_row), 2.0,
+                   label="block 奇偶")
+    bw_rot = _math(ng, "MULTIPLY", (-1700, -4700), bw_par, math.pi / 2.0)
+    bw_x = _math(ng, "MULTIPLY", (-1450, -4350),
+                 _math(ng, "ADD", (-1650, -4350),
+                       _math(ng, "MULTIPLY", (-1800, -4350), bw_col, 2.0),
+                       _switch(ng, (-1700, -4500), "FLOAT", bw_par,
+                               1.0, _math(ng, "ADD", (-1850, -4500), bw_slot, 0.5))),
+                 size_sep.outputs["Y"], label="bw x")
+    bw_y = _math(ng, "MULTIPLY", (-1450, -4550),
+                 _math(ng, "ADD", (-1650, -4550),
+                       _math(ng, "MULTIPLY", (-1800, -4550), bw_row, 2.0),
+                       _switch(ng, (-1700, -4700), "FLOAT", bw_par,
+                               _math(ng, "ADD", (-1850, -4700), bw_slot, 0.5), 1.0)),
+                 size_sep.outputs["Y"], label="bw y")
+    bw_pos = _xyz(ng, (-1250, -4450), x=bw_x, y=bw_y)
+
+    # Chevron：45° 平行四邊形單元；奇數欄鏡像成 -45°
+    ch_i = _out(gidx, "Index")
+    ch_col = _math(ng, "FLOORED_MODULO", (-2350, -5000), ch_i, gx_n)
+    ch_row = _math(ng, "FLOOR", (-2350, -5150),
+                   _math(ng, "DIVIDE", (-2200, -5150), ch_i, gx_n))
+    ch_par = _math(ng, "FLOORED_MODULO", (-2150, -5300), ch_col, 2.0)
+    ch_a = _math(ng, "MULTIPLY", (-2150, -5000), size_sep.outputs["X"],
+                 1.0 / math.sqrt(2.0), label="A = L/√2")
+    ch_h = _math(ng, "MULTIPLY", (-2150, -5150), size_sep.outputs["Y"],
+                 math.sqrt(2.0), label="H = W·√2")
+    ch_x = _math(ng, "MULTIPLY", (-1950, -5000),
+                 _math(ng, "ADD", (-2100, -5000), ch_col, 0.5), ch_a, label="ch x")
+    ch_y = _math(ng, "MULTIPLY", (-1950, -5150),
+                 _math(ng, "ADD", (-2100, -5150), ch_row, 0.5), ch_h, label="ch y")
+    ch_sx = _switch(ng, (-1950, -5300), "FLOAT", ch_par, 1.0, -1.0,
+                    label="mirror odd cols")
+    ch_scale = _xyz(ng, (-1750, -5300), x=ch_sx, y=1.0, z=1.0)
+    ch_pos = _xyz(ng, (-1250, -5100), x=ch_x, y=ch_y)
+
+    pat_rot = _index_switch(ng, (-1050, -4700), "FLOAT", _out(gi, "Grid Type"),
+                            [0.0, 0.0, tri_z, 0.0, hb_rot, 0.0, bw_rot],
+                            label="pattern rot")
+    one_vec = _xyz(ng, (-1050, -5000), x=1.0, y=1.0, z=1.0)
+    pat_scale = _index_switch(ng, (-850, -5000), "VECTOR", _out(gi, "Grid Type"),
+                              [one_vec, one_vec, one_vec, one_vec,
+                               one_vec, ch_scale, one_vec],
+                              label="pattern scale")
+
     grid_pos = _index_switch(ng, (-1500, -1500), "VECTOR", _out(gi, "Grid Type"),
-                             [sq_pos, hex_pos, tri_pos, brick_pos], label="Grid Type")
-    g_total = _math(ng, "MULTIPLY", (-1300, -1000), gx_n, gy_n, label="Nx·Ny")
+                             [sq_pos, hex_pos, tri_pos, brick_pos,
+                              hb_pos, ch_pos, bw_pos], label="Grid Type")
+    pat_mul = _index_switch(ng, (-1500, -800), "FLOAT", _out(gi, "Grid Type"),
+                            [1.0, 1.0, 1.0, 1.0, 8.0, 1.0, 2.0],
+                            label="points / cell")
+    g_total = _math(ng, "MULTIPLY", (-1300, -1000),
+                    _math(ng, "MULTIPLY", (-1450, -1000), gx_n, gy_n), pat_mul,
+                    label="Nx·Ny·每格點數")
     g_pts = _node(ng, "GeometryNodePoints", (-1050, -1000), label="Points", width=160)
     _link(ng, g_total, _in(g_pts, "Count"))
     _link(ng, grid_pos, _in(g_pts, "Position"))
     grid_geom = _store_orientation(ng, _out(g_pts, "Points"),
-                                   grid_rot,
+                                   _xyz(ng, (-850, -1300), z=pat_rot),
                                    _xyz(ng, (-850, -1050), x=1.0),
                                    _xyz(ng, (-850, -1250), z=1.0),
-                                   (-850, -900))
+                                   (-850, -900), scale=pat_scale)
     _frame(ng, "③-B Grid　XY / Hex / Triangle", C_LAYOUT, list(ng.nodes)[start:])
 
     # Radial ---------------------------------------------------------------
@@ -838,6 +933,10 @@ def build(name=NAME):
     _link(ng, _out(gi, "Unit From Collection"), _in(inst, "Pick Instance"))
     _link(ng, _out(pick, "Value"), _in(inst, "Instance Index"))
     _link(ng, final_rot, _in(inst, "Rotation"))
+    na_scale = _node(ng, "GeometryNodeInputNamedAttribute", (850, 450),
+                     label="scale", width=170, data_type="FLOAT_VECTOR")
+    _in(na_scale, "Name").default_value = ATTR_SCALE
+    _link(ng, _out(na_scale, "Attribute"), _in(inst, "Scale"))
     _frame(ng, "⑤ 實例化", C_INST, list(ng.nodes)[start:])
     instancing = _out(inst, "Instances")
 

@@ -192,6 +192,48 @@ def main():
     xs = sorted(round(g["pos"][0], 3) for g in got if abs(g["pos"][1] - 1.0) < 1e-4)
     check("brick 1/3 offset", xs == [0.333, 1.333, 2.333, 3.333], str(xs))
 
+    # herringbone: one 4W cell holds 8 bricks
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 4)
+    setv(mod, "Count X", 1)
+    setv(mod, "Count Y", 1)
+    got = samples(host)
+    hb_xy = {(round(g["pos"][0], 4), round(g["pos"][1], 4)) for g in got}
+    hb_expected = {(0.4, 0.2), (1.6, 0.6), (1.2, 1.0), (0.8, 1.4),
+                   (1.0, 0.4), (0.6, 0.8), (0.2, 1.2), (1.4, 1.6)}
+    check("herringbone 8-brick cell", len(got) == 8 and hb_xy == hb_expected,
+          str(sorted(hb_xy)))
+    check("herringbone verticals rotated",
+          abs(got[4]["rot"][2] - 90) < 0.1, str(got[4]["rot"]))
+
+    # basket weave: one block = 2 bricks, alternate blocks turn 90°
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 6)
+    setv(mod, "Count X", 2)
+    setv(mod, "Count Y", 1)
+    got = samples(host)
+    bw_xy = {(round(g["pos"][0], 4), round(g["pos"][1], 4)) for g in got}
+    check("basket weave blocks",
+          len(got) == 4 and bw_xy == {(0.4, 0.2), (0.4, 0.6), (1.0, 0.4), (1.4, 0.4)},
+          str(sorted(bw_xy)))
+
+    # chevron: one plank per cell, odd columns mirrored
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 5)
+    setv(mod, "Count X", 2)
+    setv(mod, "Count Y", 2)
+    got = samples(host)
+    ch_xy = [(round(g["pos"][0], 3), round(g["pos"][1], 3)) for g in got]
+    ch_sx = [g["scale"][0] for g in got]
+    check("chevron 2x2 positions",
+          len(got) == 4 and all(close(p, e) for p, e in zip(
+              ch_xy, [(0.141, 0.283), (0.424, 0.283), (0.141, 0.849), (0.424, 0.849)])),
+          str(ch_xy))
+    check("chevron mirrors odd columns", ch_sx[0] > 0 and ch_sx[1] < 0, str(ch_sx))
+
     reset(mod)
     setv(mod, "Mode", 2)
     setv(mod, "Count", 4)

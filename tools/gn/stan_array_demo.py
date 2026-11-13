@@ -537,12 +537,84 @@ def scene_brick(ng):
     area_light((2.4, -2.2, 2.7), (1.1, 0, 0.7), 3.8, 210)
 
 
+
+def _prism(name, poly, thickness, color):
+    n = len(poly)
+    verts = [(x, y, 0.0) for x, y in poly] + [(x, y, thickness) for x, y in poly]
+    faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, 2 * n))]
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, n + j, n + i))
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    me.materials.append(material(name, color, 0.4))
+    return me
+
+
+def scene_patterns(ng):
+    setup_world(strength=0.55, color=(0.04, 0.045, 0.05))
+    setup_light(angle=0.3, energy=3.2, rot=(0.55, 0.15, 0.75))
+    floor(size=16, color=(0.12, 0.12, 0.13), rough=0.9)
+
+    brick_coll = bpy.data.collections.new("Pattern Bricks")
+    bpy.context.scene.collection.children.link(brick_coll)
+    brick_colors = [(0.80, 0.72, 0.58), (0.78, 0.55, 0.36), (0.55, 0.18, 0.12)]
+    for i, col in enumerate(brick_colors):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
+        o = bpy.context.object
+        o.name = "Pattern Brick %d" % i
+        o.scale = (0.24, 0.12, 0.03)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        bev = o.modifiers.new("Bevel", "BEVEL")
+        bev.width = 0.004
+        bev.segments = 2
+        bpy.ops.object.modifier_apply(modifier=bev.name)
+        o.data.materials.append(material("Pattern Brick %d" % i, col, 0.4))
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        brick_coll.objects.link(o)
+
+    A = 0.24 / math.sqrt(2.0)
+    H = 0.12 * math.sqrt(2.0)
+    poly = [(-A / 2, -H / 2 - A / 2), (-A / 2, H / 2 - A / 2),
+            (A / 2, H / 2 + A / 2), (A / 2, -H / 2 + A / 2)]
+    chev_coll = bpy.data.collections.new("Pattern Chevron")
+    bpy.context.scene.collection.children.link(chev_coll)
+    chev_colors = [(0.18, 0.46, 0.43), (0.80, 0.72, 0.58), (0.78, 0.55, 0.36)]
+    for i, col in enumerate(chev_colors):
+        me = _prism("Chevron %d" % i, poly, 0.03, col)
+        o = bpy.data.objects.new("Chevron %d" % i, me)
+        chev_coll.objects.link(o)
+
+    def panel(name, coll, x, gtype, cx, cy, width):
+        box(name + " Backing", (width, width, 0.03),
+            (x + width / 2 - 0.08, width / 2 - 0.08, -0.025),
+            material(name + " Backing", (0.05, 0.05, 0.06), 0.85))
+        host = bpy.data.objects.new(name, bpy.data.meshes.new(name))
+        bpy.context.scene.collection.objects.link(host)
+        host.location = (x, 0, 0)
+        apply_array(host, ng, {
+            "Mode": 1, "Grid Type": gtype, "Count X": cx, "Count Y": cy,
+            "Unit From Collection": True, "Collection": coll,
+            "Collection Count": 3, "Seed": 4,
+        })
+
+    panel("Herringbone", brick_coll, 0.0, 4, 3, 3, 1.66)
+    panel("Basket Weave", brick_coll, 1.95, 6, 6, 6, 1.66)
+    panel("Chevron", chev_coll, 3.90, 5, 8, 8, 1.66)
+
+    camera((2.55, -4.8, 4.1), (2.55, 0.6, 0.05), 45)
+    area_light((2.6, -1.8, 4.0), (2.4, 0.6, 0), 5.0, 300)
+
+
 SCENES = {
     "fence": scene_fence,
     "tiles": scene_tiles,
     "hex": scene_hex,
     "tri": scene_tri,
     "brick": scene_brick,
+    "patterns": scene_patterns,
     "lamp": scene_lamp,
     "bracelet": scene_bracelet,
     "scatter": scene_scatter,

@@ -55,6 +55,9 @@ Link it.
 | `1` **Hex** | honeycomb | `Cell Size` (hex diameter) | `Flat Top` = false: odd **rows** shift `dx/2`; true: odd **columns** shift `dy/2` |
 | `2` **Triangle** | triangular **tiling** — triangle centroids on a honeycomb | `Step` = triangle side | every other cell rotated 180° (up/down) |
 | `3` **Brick** | staggered brick courses | `Step`/`Gap`/`Fit` per axis | `Stagger` × brick length, advanced every `Stagger Repeat` courses |
+| `4` **Herringbone** | 2:1 brick herringbone | `Count X`/`Count Y` = 4W cells, 8 bricks per cell | unit must be a 2:1 brick (L = 2W), centred |
+| `5` **Chevron** | 45° chevron | `Count X`/`Count Y` = planks | unit must be a parallelogram with **vertical ends**, long axis +45°, centred |
+| `6` **Basket Weave** | 2×2 blocks of H/V pairs | `Count X`/`Count Y` = blocks, 2 bricks per block | unit must be a 2:1 brick |
 
 Hex math (`R = Cell Size / 2`):
 
@@ -185,7 +188,7 @@ export, or shading that needs unique geometry).
 
 ## Demo scenes
 
-`demo/stan_*.png` (nine scenes) are rendered by `tools/gn/stan_array_demo.py`:
+`demo/stan_*.png` (ten scenes) are rendered by `tools/gn/stan_array_demo.py`:
 
 | Scene | Shows |
 |---|---|
@@ -194,6 +197,7 @@ export, or shading that needs unique geometry).
 | [hex](demo/stan_hex.png) | Grid Type = Hex, three tiles picked at random |
 | [tri](demo/stan_tri.png) | Grid Type = Triangle — a real triangular tiling with alternating up/down cells |
 | [brick](demo/stan_brick.png) | Grid Type = Brick — 1/2 running bond with mortar and mixed brick colours |
+| [patterns](demo/stan_patterns.png) | Herringbone, Basket Weave and Chevron side by side |
 | [lamp](demo/stan_lamp.png) | Radial with a unit offset from its origin |
 | [bracelet](demo/stan_bracelet.png) | Curve with a cyclic path |
 | [scatter](demo/stan_scatter.png) | Mesh → Surface, normals + random variation |
@@ -202,6 +206,26 @@ export, or shading that needs unique geometry).
 Open [`demo/stan_array_demo.blend`](demo/stan_array_demo.blend) to inspect the
 fence scene: the host carries the `Stan Array` modifier with its inputs already
 set.
+
+## Herringbone, Chevron, Basket Weave
+
+These three are 2D **patterns**, not simple course offsets:
+
+- **Herringbone** (`4`): a 4W × 4W cell holds 8 bricks — four horizontal at
+  `(0,0) (3,1) (2,2) (1,3)` and four vertical at `(2,0) (1,1) (0,2) (3,3)`,
+  in units of `W`. Bricks cross cell edges, which is what makes the bond
+  continuous. Requires a 2:1 brick (`L = 2W`) centred at its origin.
+- **Basket Weave** (`6`): a 2W × 2W block holds two bricks. Blocks alternate
+  orientation like a checkerboard: even blocks are two stacked horizontal bricks,
+  odd blocks are two side-by-side vertical bricks. Requires a 2:1 brick.
+- **Chevron** (`5`): planks sit at ±45° in a square lattice
+  (`A = L/√2`, `H = W·√2`), with odd columns mirrored to make the V. The unit must
+  be a **mitred parallelogram** with vertical ends and a +45° long axis (see the
+  demo); a plain rectangle will show V-shaped grout gaps at the joints.
+
+`Count X` / `Count Y` mean cells for Herringbone and Basket Weave (8 and 2 bricks
+per cell), and planks for Chevron. All three are unit-size driven: author the
+brick/parallelogram at its real size and keep it centred at the origin.
 
 ## Common brick & tile patterns
 
@@ -283,7 +307,7 @@ python3 tools/gn/gn.py apply --group stan --object "Host" \
 # render the eight demo scenes + contact sheet
 python3 tools/gn/gn.py stan-demo --samples 32 --res 760
 
-# smoke tests (22 checks: every mode, lattice, brick bond, spacing, align, mirror, gradient, realize)
+# smoke tests (27 checks: every mode, lattice, brick bond, patterns, spacing, align, mirror, gradient, realize)
 blender -b --factory-startup --python tools/gn/test_stan_array.py
 ```
 
@@ -318,7 +342,7 @@ MIT — see [LICENSE](LICENSE).
 `assets/geometry_nodes.blend` → `NodeTree` → `Stan Array`，加到物件上，選 **Mode**：
 
 - `0` 線性（Direction 方向）
-- `1` 網格（**Grid Type**：`0` XY 方格、`1` Hex 蜂巢、`2` Triangle 三角形貼磚、`3` Brick 磚牆）
+- `1` 網格（**Grid Type**：`0` XY、`1` Hex、`2` Triangle、`3` Brick、`4` Herringbone、`5` Chevron、`6` Basket Weave）
 - `2` 環狀（Radius、Arc、Start Angle）
 - `3` 曲線（指定 Curve 物件）
 - `4` Mesh（頂點／邊中點／面中心／表面隨機；Surface 留空用自己）
@@ -336,6 +360,10 @@ MIT — see [LICENSE](LICENSE).
 **Grid Type = Brick**：`Stagger` 是磚長的錯位比例（`0` 對齊、`0.5` 1/2、`0.333` 1/3、
 `0.25` 1/4），`Stagger Repeat` 是每幾列推進一次（1 = 每列）。Brick 跟 XY 一樣吃
 `Step` / `Gap` / `Fit`；用 `Gap` 當灰縫最方便，pitch 會自動是「磚 + 縫」。
+
+**Herringbone（4）／Basket Weave（6）** 需要 2:1 的磚（長 = 2×寬、原點在中心）；
+`Count X/Y` 是 4W 格／2W 區塊，每格分別 8／2 塊。**Chevron（5）** 需要「兩端垂直、
+長軸 +45°」的平行四邊形單元，`Count X/Y` 是板數；用長方形磚會在 V 接縫留下三角形縫。
 
 Hex/Triangle 不受 `Spacing Mode` 影響，間距由 `Cell Size` / `Step` 決定。
 
@@ -363,7 +391,7 @@ Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` �
 
 ```bash
 python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend
-blender -b --factory-startup --python tools/gn/test_stan_array.py   # 22 項檢查
+blender -b --factory-startup --python tools/gn/test_stan_array.py   # 27 項檢查
 python3 tools/gn/gn.py stan-demo                   # 八個示範場景 + contact sheet
 ```
 

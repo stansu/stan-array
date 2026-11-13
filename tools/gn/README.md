@@ -1,7 +1,7 @@
 # Stan Array 工具庫（GN）
 
 `Stan Array` 是一個通用陣列 Geometry Nodes group：Linear／Grid（XY・Hex・
-Triangle・Brick）／Radial／Curve／Mesh／Collection，間距支援 Step／Gap／Fit，
+Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Mesh／Collection，間距支援 Step／Gap／Fit，
 可隨機、鏡像、漸變。完整參數表與常用排法在[根目錄 README](../../README.md#stan-array)。
 
 ## 檔案
@@ -9,9 +9,9 @@ Triangle・Brick）／Radial／Curve／Mesh／Collection，間距支援 Step／G
 | 路徑 | 說明 |
 |---|---|
 | [`stan_array.py`](stan_array.py) | `Stan Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
-| [`stan_array_demo.py`](stan_array_demo.py) | 九個示範場景與 Cycles 算圖（headless）。 |
+| [`stan_array_demo.py`](stan_array_demo.py) | 十個示範場景與 Cycles 算圖（headless）。 |
 | [`contact_sheet.py`](contact_sheet.py) | 把 `demo/stan_*.png` 拼成 `demo/stan_contact.png`（需要 Pillow）。 |
-| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（22 項：每個模式、四種晶格、brick 錯位、間距、方向、鏡像、漸變、Realize）。 |
+| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（27 項：每個模式、七種晶格／排法、brick 錯位、間距、方向、鏡像、漸變、Realize）。 |
 | [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
 | [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `stan-demo`，透過 Blender Bridge 操作開著的 Blender。 |
 | [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫。任何 .blend 都能 Append / Link 這個 node group。 |
@@ -29,7 +29,7 @@ Triangle・Brick）／Radial／Curve／Mesh／Collection，間距支援 Step／G
 | ⑥ 變化 | Rotate / Scale / Set Position（Unit Scale、隨機、鏡像、漸變） |
 | ⑦ 輸出 | 實例或 Realize |
 
-### Grid 的四種晶格
+### Grid 的七種晶格
 
 `Grid Type`：
 
@@ -44,6 +44,11 @@ Triangle・Brick）／Radial／Curve／Mesh／Collection，間距支援 Step／G
 - `3` **Brick**：`x = col·stepX + (floor(row / Stagger Repeat) · Stagger · stepX mod stepX)`、
   `y = row·stepY`；`Stagger` 0 = 對齊、0.5 = 1/2、0.333 = 1/3、0.25 = 1/4。
   Brick 跟 XY 一樣吃 Step/Gap/Fit。
+- `4` **Herringbone**：4W × 4W cell，H 在 `(0,0)(3,1)(2,2)(1,3)`、V 在
+  `(2,0)(1,1)(0,2)(3,3)`，每格 8 塊；磚要 2:1、中心在原點。
+- `5` **Chevron**：`A = L/√2`、`H = W·√2`，奇數欄鏡像；單元要是「兩端垂直、
+  長軸 +45°」的平行四邊形。
+- `6` **Basket Weave**：2W × 2W block，偶數 block 兩塊橫磚、奇數 block 兩塊直磚。
 
 Hex/Triangle 不使用 `Spacing Mode`；點數 = `Count X × Count Y`，直接用
 `Index` 推 `col/row` 後算座標，所以不需要 Mesh Grid，也沒有頂點順序問題。
@@ -81,7 +86,7 @@ python3 tools/gn/gn.py apply --object "Host" --set mode=grid --set grid_type=bri
     --set count_x=10 --set count_y=17 --set spacing_mode=gap --set gap=0.008 \
     --set stagger=0.5 --set stagger_repeat=1
 
-# 示範場景（九個）+ contact sheet
+# 示範場景（十個）+ contact sheet
 python3 tools/gn/gn.py stan-demo
 ```
 
