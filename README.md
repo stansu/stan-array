@@ -3,7 +3,7 @@
 A general-purpose **Geometry Nodes** array modifier for Blender — one node group
 with six layouts, three lattice types inside Grid, and three spacing rules:
 
-`Linear` · `Grid (XY / Hex / Triangle / Brick)` · `Radial` · `Curve` · `Mesh` ·
+`Linear` · `Grid (XY / Hex / Triangle / Brick / Herringbone / Chevron / Basket)` · `Radial` · `Curve` · `Mesh` ·
 `Collection` — with `Step` / `Gap` / `Fit` spacing, orientation control, random
 variation, alternating mirror, and gradient.
 
@@ -161,7 +161,7 @@ Applied **after** instancing, so it composes with each unit's own orientation:
 | `Direction` | Vector | (1, 0, 0) | Linear direction, object space |
 | `Count` | Int | 5 | Linear / Radial / Curve(Fit) |
 | `Count X` `Count Y` | Int | 5 | Grid (Triangle: triangles per band × bands) |
-| `Grid Type` | Int | 0 | 0 XY · 1 Hex · 2 Triangle |
+| `Grid Type` | Int | 0 | 0 XY · 1 Hex · 2 Triangle · 3 Brick · 4 Herringbone · 5 Chevron · 6 Basket Weave |
 | `Cell Size` | Float | 0.25 | hex diameter |
 | `Flat Top` | Bool | false | hex orientation |
 | `Stagger` | Float | 0.5 | Brick offset as a fraction of `stepX` (0 = stack, 0.5 = 1/2, 0.333 = 1/3) |
@@ -222,7 +222,9 @@ These three are 2D **patterns**, not simple course offsets:
   controls the width (`L = 2W`). Blocks alternate
   orientation like a checkerboard: even blocks are two stacked horizontal bricks,
   odd blocks are two side-by-side vertical bricks. Requires a 2:1 brick.
-- **Chevron** (`5`): planks sit at ±45° in a square lattice
+- **Chevron** (`5`): **the node group does not rotate the unit.** It expects a
+  mitred parallelogram authored at +45°; a rectangular brick will be placed as a
+  staggered grid, not a V. Planks sit at ±45° in a square lattice
   (`A = L/√2`, `H = W·√2`), with odd columns mirrored to make the V. The unit must
   be a **mitred parallelogram** with vertical ends and a +45° long axis (see the
   demo); a plain rectangle will show V-shaped grout gaps at the joints.
