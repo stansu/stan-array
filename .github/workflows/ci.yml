@@ -1,0 +1,21 @@
+name: smoke tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same release the asset is built with (Blender 4.5).
+      - name: Install Blender 4.5
+        run: |
+          curl -fsSLO https://download.blender.org/release/Blender4.5/blender-4.5.0-linux-x64.tar.xz
+          tar -xf blender-4.5.0-linux-x64.tar.xz
+
+      - name: Run headless smoke tests
+        run: blender-4.5.0-linux-x64/blender -b --factory-startup --python tools/gn/test_stan_array.py

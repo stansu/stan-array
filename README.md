@@ -313,10 +313,10 @@ python3 tools/gn/gn.py apply --object "Host" \
 python3 tools/gn/gn.py apply --group stan --object "Host" \
     --set mode=linear --set spacing_mode=fit --set length=4 --set count=9
 
-# render the eight demo scenes + contact sheet
+# render the ten demo scenes + contact sheet
 python3 tools/gn/gn.py stan-demo --samples 32 --res 760
 
-# smoke tests (27 checks: every mode, lattice, brick bond, patterns, spacing, align, mirror, gradient, realize)
+# smoke tests (36 checks: every mode, lattice, brick bond, patterns, spacing, align, mirror, gradient, realize, fit guard, enum wiring)
 blender -b --factory-startup --python tools/gn/test_stan_array.py
 ```
 
@@ -400,8 +400,8 @@ Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` �
 
 ```bash
 python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend
-blender -b --factory-startup --python tools/gn/test_stan_array.py   # 27 項檢查
-python3 tools/gn/gn.py stan-demo                   # 八個示範場景 + contact sheet
+blender -b --factory-startup --python tools/gn/test_stan_array.py   # 36 項檢查
+python3 tools/gn/gn.py stan-demo                   # 十個示範場景 + contact sheet
 ```
 
 Asset 以 Blender 4.5 建置／測試，5.2 可正常開啟與評估（CLI 會優先找 4.5）。
