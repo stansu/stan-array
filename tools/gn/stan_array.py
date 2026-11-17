@@ -25,8 +25,9 @@ import bpy
 
 NAME = "Stan Array"
 DESCRIPTION = (
-    "通用陣列：線性／網格（XY・Hex・Triangle）／環狀／曲線／Mesh 頂點邊面／"
-    "Collection 物件軸心；間距支援固定、貼齊留縫、總長均分；可隨機與鏡像。"
+    "通用陣列：線性／網格（XY・Hex・Triangle・Brick・Herringbone・Chevron・"
+    "Basket Weave）／環狀／曲線／Mesh 頂點邊面／Collection 物件軸心；"
+    "間距支援固定、貼齊留縫、總長均分；可隨機與鏡像。"
 )
 
 C_UNIT = (0.20, 0.28, 0.36)
@@ -41,11 +42,21 @@ C_INST = (0.22, 0.30, 0.30)
 C_VARY = (0.32, 0.24, 0.24)
 C_OUT = (0.24, 0.32, 0.24)
 
+# Int-enum tables — the single source of truth for socket ranges, socket
+# descriptions and the smoke tests (Blender's Python API cannot create
+# dropdown items, so the names live in the descriptions).
 MODE_NAMES = ["Linear", "Grid", "Radial", "Curve", "Mesh", "Collection"]
-GRID_NAMES = ["XY", "Hex", "Triangle"]
+GRID_NAMES = ["XY", "Hex", "Triangle", "Brick", "Herringbone", "Chevron",
+              "Basket Weave"]
 SPACING_NAMES = ["Step", "Gap", "Fit"]
 ALIGN_NAMES = ["Natural", "Forward", "Up"]
 MESH_NAMES = ["Vertices", "Edges", "Faces", "Surface"]
+AXIS_NAMES = ["X", "Y", "Z"]
+
+
+def _enum(names):
+    """Enum socket text generated from a name list: "0 X ｜ 1 Y ｜ 2 Z"."""
+    return " ｜ ".join("%d %s" % (i, n) for i, n in enumerate(names))
 
 ATTR_ROT = "arr_rot"
 ATTR_FWD = "arr_fwd"
@@ -255,7 +266,7 @@ def build(name=NAME):
     geo_in.description = "主機物件的幾何（Unit = Host 時就是被複製的單元）"
 
     p_main = itf.new_panel("① 排列 Arrangement")
-    p_main.description = "Mode 0 Linear｜1 Grid｜2 Radial｜3 Curve｜4 Mesh｜5 Collection"
+    p_main.description = _enum(MODE_NAMES)
     p_radial = itf.new_panel("② 環狀 Radial")
     p_src = itf.new_panel("③ 曲線與網格 Curve & Mesh")
     p_orient = itf.new_panel("④ 方向 Orientation")
@@ -277,9 +288,9 @@ def build(name=NAME):
             s.subtype = subtype
         return s
 
-    sock("Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=5,
-         desc="0 Linear 線性 ｜ 1 Grid 網格 ｜ 2 Radial 環狀 ｜ "
-              "3 Curve 曲線 ｜ 4 Mesh 頂點/邊/面/表面 ｜ 5 Collection 物件軸心")
+    sock("Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=len(MODE_NAMES) - 1,
+         desc=_enum(MODE_NAMES) + "\n線性｜網格｜環狀｜曲線｜Mesh 頂點/邊/面/表面｜"
+              "Collection 物件軸心")
     sock("Unit From Collection", "NodeSocketBool", False, p_main,
          desc="False = 複製主物件自己的幾何；True = 從 Collection 取單元（可隨機挑款）")
     sock("Collection", "NodeSocketCollection", None, p_main,
@@ -292,9 +303,8 @@ def build(name=NAME):
          desc="Linear / Radial / Curve(Fit) 的數量")
     sock("Count X", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 X 數量")
     sock("Count Y", "NodeSocketInt", 5, p_main, minv=1, maxv=512, desc="Grid 的 Y 數量")
-    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=6,
-         desc="0 XY ｜ 1 Hex ｜ 2 Triangle ｜ 3 Brick ｜ 4 Herringbone ｜ "
-              "5 Chevron ｜ 6 Basket Weave")
+    sock("Grid Type", "NodeSocketInt", 0, p_main, minv=0, maxv=len(GRID_NAMES) - 1,
+         desc=_enum(GRID_NAMES))
     sock("Cell Size", "NodeSocketFloat", 0.25, p_main, minv=0.0001,
          subtype="DISTANCE",
          desc="Hex 的六角外徑（頂點到頂點）；Flat Top 時整個晶格轉 90°")
@@ -310,17 +320,20 @@ def build(name=NAME):
               "（Herringbone / Basket 會用 2×Pattern W）")
     sock("Pattern W", "NodeSocketFloat", 0.0, p_main, minv=0.0, subtype="DISTANCE",
          desc="Herringbone / Chevron / Basket 的磚寬；0 = 用單元尺寸")
-    sock("Spacing Mode", "NodeSocketInt", 0, p_main, minv=0, maxv=2,
-         desc="0 Step 固定間距 ｜ 1 Gap 依尺寸貼齊留縫 ｜ 2 Fit 給總長均分"
+    sock("Spacing Mode", "NodeSocketInt", 0, p_main, minv=0,
+         maxv=len(SPACING_NAMES) - 1,
+         desc=_enum(SPACING_NAMES) +
+              "\n固定間距｜依尺寸貼齊留縫｜給總長均分"
               "（Hex / Triangle 用自己的 Cell Size / Step，不受此項影響）")
     sock("Step", "NodeSocketFloat", 1.0, p_main, minv=0.0, subtype="DISTANCE",
          desc="Step 模式的中心距")
     sock("Gap", "NodeSocketFloat", 0.1, p_main, minv=0.0, subtype="DISTANCE",
          desc="Gap 模式的單元間縫隙")
     sock("Length", "NodeSocketFloat", 5.0, p_main, minv=0.0, subtype="DISTANCE",
-         desc="Fit 模式：Linear 的總長、Grid 的 X 總長（外緣對齊）")
+         desc="Fit 模式：Linear 的總長、Grid 的 X 總長（外緣對齊）；"
+              "小於單元尺寸時間距為 0（各份重疊在原點）")
     sock("Length Y", "NodeSocketFloat", 5.0, p_main, minv=0.0, subtype="DISTANCE",
-         desc="Fit 模式：Grid 的 Y 總長")
+         desc="Fit 模式：Grid 的 Y 總長；小於單元尺寸時間距為 0")
     sock("Radius", "NodeSocketFloat", 1.0, p_radial, minv=0.0, subtype="DISTANCE",
          desc="Radial 的半徑")
     sock("Arc", "NodeSocketFloat", 360.0, p_radial, minv=0.1, maxv=360.0,
@@ -330,18 +343,18 @@ def build(name=NAME):
     sock("Curve", "NodeSocketObject", None, p_src, desc="Curve 模式的曲線物件")
     sock("Surface", "NodeSocketObject", None, p_src,
          desc="Mesh 模式的表面物件；留空 = 使用主物件自己的幾何")
-    sock("Mesh Mode", "NodeSocketInt", 0, p_src, minv=0, maxv=3,
-         desc="0 頂點 ｜ 1 邊中點 ｜ 2 面中心 ｜ 3 表面隨機（Density）")
+    sock("Mesh Mode", "NodeSocketInt", 0, p_src, minv=0, maxv=len(MESH_NAMES) - 1,
+         desc=_enum(MESH_NAMES) + "\n頂點｜邊中點｜面中心｜表面隨機（Density）")
     sock("Density", "NodeSocketFloat", 10.0, p_src, minv=0.0,
          desc="Mesh Mode = Surface 時的每平方公尺點數")
     sock("Point Collection", "NodeSocketCollection", None, p_src,
          desc="Collection 模式：讀每個物件的原點與旋轉（物件本身不會顯示）")
-    sock("Align", "NodeSocketInt", 0, p_orient, minv=0, maxv=2,
-         desc="0 Natural 各模式預設 ｜ 1 Forward 前方軸對齊 ｜ 2 Up 上方軸對齊")
-    sock("Forward Axis", "NodeSocketInt", 1, p_orient, minv=0, maxv=2,
-         desc="0 X ｜ 1 Y（Blender 慣例）｜ 2 Z")
-    sock("Up Axis", "NodeSocketInt", 2, p_orient, minv=0, maxv=2,
-         desc="0 X ｜ 1 Y ｜ 2 Z")
+    sock("Align", "NodeSocketInt", 0, p_orient, minv=0, maxv=len(ALIGN_NAMES) - 1,
+         desc=_enum(ALIGN_NAMES) + "\n各模式預設｜前方軸對齊｜上方軸對齊")
+    sock("Forward Axis", "NodeSocketInt", 1, p_orient, minv=0, maxv=len(AXIS_NAMES) - 1,
+         desc=_enum(AXIS_NAMES) + "（1 Y = Blender 慣例）")
+    sock("Up Axis", "NodeSocketInt", 2, p_orient, minv=0, maxv=len(AXIS_NAMES) - 1,
+         desc=_enum(AXIS_NAMES))
     sock("Random Offset", "NodeSocketVector", (0.0, 0.0, 0.0), p_vary,
          desc="每份的隨機位移幅度（公尺）")
     sock("Random Rotate", "NodeSocketVector", (0.0, 0.0, 0.0), p_vary,
@@ -353,8 +366,8 @@ def build(name=NAME):
     sock("Seed", "NodeSocketInt", 0, p_vary)
     sock("Mirror", "NodeSocketBool", False, p_vary,
          desc="每隔一份鏡像（沿 Mirror Axis）")
-    sock("Mirror Axis", "NodeSocketInt", 0, p_vary, minv=0, maxv=2,
-         desc="0 X ｜ 1 Y ｜ 2 Z")
+    sock("Mirror Axis", "NodeSocketInt", 0, p_vary, minv=0, maxv=len(AXIS_NAMES) - 1,
+         desc=_enum(AXIS_NAMES))
     sock("Gradient Scale", "NodeSocketFloat", 1.0, p_vary, minv=0.0,
          desc="沿排列順序從 1 漸變到這個倍率")
     sock("Gradient Rotate", "NodeSocketFloat", 0.0, p_vary,
