@@ -8,7 +8,7 @@
 import argparse
 import os
 
-ORDER = ["fence", "tiles", "hex", "tri", "brick", "patterns", "lamp", "bracelet", "scatter", "locators"]
+ORDER = ["fence", "tiles", "hex", "tri", "brick", "patterns", "chevron", "lamp", "bracelet", "scatter", "locators"]
 
 
 def main():

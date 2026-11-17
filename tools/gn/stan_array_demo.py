@@ -538,18 +538,27 @@ def scene_brick(ng):
 
 
 
-def _prism(name, poly, thickness, color):
-    n = len(poly)
-    verts = [(x, y, 0.0) for x, y in poly] + [(x, y, thickness) for x, y in poly]
-    faces = [tuple(range(n - 1, -1, -1)), tuple(range(n, 2 * n))]
-    for i in range(n):
-        j = (i + 1) % n
-        faces.append((i, j, n + j, n + i))
-    me = bpy.data.meshes.new(name)
-    me.from_pydata(verts, [], faces)
-    me.update()
-    me.materials.append(material(name, color, 0.4))
-    return me
+def _brick_coll(name, palette, sx, sy, sz=0.03):
+    """矩形磚集合：Chevron 由 node group 斜切成平行四邊形，單位本身只要是矩形即可。"""
+    coll = bpy.data.collections.new(name)
+    bpy.context.scene.collection.children.link(coll)
+    for i, color in enumerate(palette):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
+        o = bpy.context.object
+        o.name = "%s %d" % (name, i)
+        o.scale = (sx, sy, sz)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        bev = o.modifiers.new("Bevel", "BEVEL")
+        bev.width = 0.004
+        bev.segments = 2
+        bpy.ops.object.modifier_apply(modifier=bev.name)
+        o.data.materials.append(material("%s %d" % (name, i), color, 0.4))
+        # 磚只是「單元來源」，本身不該出現在畫面裡（Collection Info 不受影響）
+        o.hide_render = True
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+        coll.objects.link(o)
+    return coll
 
 
 def scene_patterns(ng):
@@ -557,37 +566,15 @@ def scene_patterns(ng):
     setup_light(angle=0.3, energy=3.2, rot=(0.55, 0.15, 0.75))
     floor(size=16, color=(0.12, 0.12, 0.13), rough=0.9)
 
-    brick_coll = bpy.data.collections.new("Pattern Bricks")
-    bpy.context.scene.collection.children.link(brick_coll)
-    brick_colors = [(0.80, 0.72, 0.58), (0.78, 0.55, 0.36), (0.55, 0.18, 0.12)]
-    for i, col in enumerate(brick_colors):
-        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0))
-        o = bpy.context.object
-        o.name = "Pattern Brick %d" % i
-        o.scale = (0.24, 0.12, 0.03)
-        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-        bev = o.modifiers.new("Bevel", "BEVEL")
-        bev.width = 0.004
-        bev.segments = 2
-        bpy.ops.object.modifier_apply(modifier=bev.name)
-        o.data.materials.append(material("Pattern Brick %d" % i, col, 0.4))
-        for c in list(o.users_collection):
-            c.objects.unlink(o)
-        brick_coll.objects.link(o)
+    brick_coll = _brick_coll("Pattern Bricks",
+                             [(0.80, 0.72, 0.58), (0.78, 0.55, 0.36), (0.55, 0.18, 0.12)],
+                             0.24, 0.12)
+    # Chevron 斜切後是 realized mesh、Pick Instance 會關掉，
+    # 因此 Unit Collection 只放一塊磚（多塊會全部疊在同一格）。
+    chev_coll = _brick_coll("Pattern Chevron Bricks",
+                            [(0.18, 0.46, 0.43)], 0.24, 0.06)
 
-    A = 0.24 / math.sqrt(2.0)
-    H = 0.12 * math.sqrt(2.0)
-    poly = [(-A / 2, -H / 2 - A / 2), (-A / 2, H / 2 - A / 2),
-            (A / 2, H / 2 + A / 2), (A / 2, -H / 2 + A / 2)]
-    chev_coll = bpy.data.collections.new("Pattern Chevron")
-    bpy.context.scene.collection.children.link(chev_coll)
-    chev_colors = [(0.18, 0.46, 0.43), (0.80, 0.72, 0.58), (0.78, 0.55, 0.36)]
-    for i, col in enumerate(chev_colors):
-        me = _prism("Chevron %d" % i, poly, 0.03, col)
-        o = bpy.data.objects.new("Chevron %d" % i, me)
-        chev_coll.objects.link(o)
-
-    def panel(name, coll, x, gtype, cx, cy, width):
+    def panel(name, coll, x, gtype, cx, cy, width, pl=0.0, pw=0.0):
         box(name + " Backing", (width, width, 0.03),
             (x + width / 2 - 0.08, width / 2 - 0.08, -0.025),
             material(name + " Backing", (0.05, 0.05, 0.06), 0.85))
@@ -596,16 +583,40 @@ def scene_patterns(ng):
         host.location = (x, 0, 0)
         apply_array(host, ng, {
             "Mode": 1, "Grid Type": gtype, "Count X": cx, "Count Y": cy,
+            "Pattern L": pl, "Pattern W": pw,
             "Unit From Collection": True, "Collection": coll,
             "Collection Count": 3, "Seed": 4,
         })
 
     panel("Herringbone", brick_coll, 0.0, 4, 3, 3, 1.66)
     panel("Basket Weave", brick_coll, 1.95, 6, 6, 6, 1.66)
-    panel("Chevron", chev_coll, 3.90, 5, 8, 8, 1.66)
+    # 矩形磚交给 node 斜切：板寬 A = L/√2、板高 H = W·√2，L = 2W → 90° V
+    panel("Chevron", chev_coll, 3.90, 5, 7, 7, 1.66, 0.24, 0.12)
 
     camera((2.55, -4.8, 4.1), (2.55, 0.6, 0.05), 45)
     area_light((2.6, -1.8, 4.0), (2.4, 0.6, 0), 5.0, 300)
+
+
+def scene_chevron(ng):
+    """Chevron（Grid Type 5）俯視：矩形磚被 node group 斜切成平行四邊形拼成 V。"""
+    setup_world(strength=0.6, color=(0.05, 0.055, 0.06))
+    setup_light(angle=0.3, energy=3.2, rot=(0.45, 0.1, 0.6))
+    floor(size=8, color=(0.16, 0.15, 0.14), rough=0.9)
+
+    # 斜切用 realized 矩形，所以集合只放一塊磚；L = 2W → V 為 90°
+    coll = _brick_coll("Chevron Bricks", [(0.36, 0.20, 0.12)], 0.28, 0.14)
+    host = empty_host("Chevron Field")
+    apply_array(host, ng, {
+        "Mode": 1, "Grid Type": 5, "Count X": 7, "Count Y": 6,
+        "Pattern L": 0.28, "Pattern W": 0.14,
+        "Unit From Collection": True, "Collection": coll,
+        "Collection Count": 1, "Seed": 5,
+    })
+    bpy.context.view_layer.update()
+
+    cx, cy = 7 * 0.28 / math.sqrt(2.0) / 2.0, 6 * 0.14 * math.sqrt(2.0) / 2.0
+    camera((cx, cy, 2.4), (cx, cy, 0.0), 42)
+    area_light((cx, cy - 1.0, 2.2), (cx, cy, 0), 3.0, 60)
 
 
 SCENES = {
@@ -615,6 +626,7 @@ SCENES = {
     "tri": scene_tri,
     "brick": scene_brick,
     "patterns": scene_patterns,
+    "chevron": scene_chevron,
     "lamp": scene_lamp,
     "bracelet": scene_bracelet,
     "scatter": scene_scatter,

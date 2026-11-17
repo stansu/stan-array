@@ -237,6 +237,84 @@ def main():
               ch_xy, [(0.141, 0.141), (0.424, 0.141), (0.141, 0.424), (0.424, 0.424)])),
           str(ch_xy))
     check("chevron mirrors odd columns", ch_sx[0] > 0 and ch_sx[1] < 0, str(ch_sx))
+    check("chevron scale stays mirror-only",
+          all(close(g["scale"], (1, 1, 1)) or close(g["scale"], (-1, -1, -1)) for g in got),
+          str([g["scale"] for g in got]))
+
+    # Chevron 的實作是「矩形 shear 成平行四邊形」。用 realized mesh 的 bbox
+    # 檢查斜切後的板寬 A 與高 H+A，並確認鄰行斜邊完全貼合（gap/overlap=0）。
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 5)
+    setv(mod, "Pattern L", 0.4)
+    setv(mod, "Pattern W", 0.2)
+    setv(mod, "Count X", 1)
+    setv(mod, "Count Y", 1)
+    setv(mod, "Realize", True)
+    host.update_tag()
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    ch_me = host.evaluated_get(dg).to_mesh()
+    ch_x = [v.co.x for v in ch_me.vertices]
+    ch_y = [v.co.y for v in ch_me.vertices]
+    sq2 = math.sqrt(2.0)
+    check("chevron shear unit size",
+          close((max(ch_x) - min(ch_x), max(ch_y) - min(ch_y)),
+                (0.4 / sq2, 0.2 * sq2 + 0.4 / sq2), 2e-3),
+            "%.4f x %.4f" % (max(ch_x) - min(ch_x), max(ch_y) - min(ch_y)))
+    check("chevron shear unit left edge vertical at x=0",
+          abs(min(ch_x)) < 2e-3, "%.4f" % min(ch_x))
+
+    # 3x2：總寬 = 3A、總高 = 2H + A（斜邊互相貼合，所以 gap / overlap 都是 0）。
+    setv(mod, "Count X", 3)
+    setv(mod, "Count Y", 2)
+    host.update_tag()
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    ch_me2 = host.evaluated_get(dg).to_mesh()
+    ch_x2 = [v.co.x for v in ch_me2.vertices]
+    ch_y2 = [v.co.y for v in ch_me2.vertices]
+    check("chevron shear 3x2 tiles flush",
+          len(ch_me2.vertices) == 48 and
+          close((max(ch_x2) - min(ch_x2), max(ch_y2) - min(ch_y2)),
+                (3 * 0.4 / sq2, 2 * 0.2 * sq2 + 0.4 / sq2), 2e-3),
+            "%d verts %.4f x %.4f" % (len(ch_me2.vertices),
+                                      max(ch_x2) - min(ch_x2), max(ch_y2) - min(ch_y2)))
+
+    # 回歸測試：Chevron 的斜切單元是 realized mesh，若 Pick Instance 還開著
+    # （吃 Collection 的「實例」），depsgraph 會吐 0 個實例 → 整片空白。
+    # Unit Collection 只放一塊矩形磚，斜切由 node group 完成。
+    reset(mod)
+    setv(mod, "Mode", 1)
+    setv(mod, "Grid Type", 5)
+    setv(mod, "Pattern L", 0.4)
+    setv(mod, "Pattern W", 0.2)
+    setv(mod, "Count X", 3)
+    setv(mod, "Count Y", 2)
+    ch_coll = bpy.data.collections.new("Chevron Unit")
+    bpy.context.scene.collection.children.link(ch_coll)
+    brick = cube(1.0)
+    brick.scale = (0.4, 0.2, 0.05)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    for c in list(brick.users_collection):
+        c.objects.unlink(brick)
+    ch_coll.objects.link(brick)
+    setv(mod, "Unit From Collection", True)
+    setv(mod, "Collection", ch_coll)
+    setv(mod, "Collection Count", 1)
+    got = samples(host)
+    check("chevron from collection yields instances", len(got) == 6, str(len(got)))
+    # Collection Count = 3 時隨機挑款：斜切後只有 1 份，index 必須固定 0，
+    # 不然隨機 index 會超出範圍而拿不到幾何。
+    setv(mod, "Collection Count", 3)
+    setv(mod, "Seed", 7)
+    got3 = samples(host)
+    check("chevron random pick clamped to one unit", len(got3) == 6, str(len(got3)))
+    check("chevron from collection positions",
+          all(close(g["pos"], e) for g, e in zip(
+              got3, [(0.141, 0.141, 0), (0.424, 0.141, 0), (0.707, 0.141, 0),
+                     (0.141, 0.424, 0), (0.424, 0.424, 0), (0.707, 0.424, 0)])),
+          str([g["pos"] for g in got3]))
 
     reset(mod)
     setv(mod, "Mode", 2)
