@@ -56,7 +56,7 @@ Link it.
 | `2` **Triangle** | triangular **tiling** — triangle centroids on a honeycomb | `Step` = triangle side | every other cell rotated 180° (up/down) |
 | `3` **Brick** | staggered brick courses | `Step`/`Gap`/`Fit` per axis | `Stagger` × brick length, advanced every `Stagger Repeat` courses |
 | `4` **Herringbone** | 2:1 brick herringbone | `Count X`/`Count Y` = 4W cells, 8 bricks per cell | `Pattern W` (L = 2W), centred |
-| `5` **Chevron** | 45° chevron | `Count X`/`Count Y` = planks | `Pattern L`/`Pattern W`; unit must be a parallelogram with **vertical ends**, centred |
+| `5` **Chevron** | chevron / herringbone-V | `Count X`/`Count Y` = planks | `Pattern L`/`Pattern W`; **plain rectangular brick** — the node group shears it into a parallelogram |
 | `6` **Basket Weave** | 2×2 blocks of H/V pairs | `Count X`/`Count Y` = blocks, 2 bricks per block | `Pattern W` (L = 2W), centred |
 
 Hex math (`R = Cell Size / 2`):
@@ -166,7 +166,7 @@ Applied **after** instancing, so it composes with each unit's own orientation:
 | `Flat Top` | Bool | false | hex orientation |
 | `Stagger` | Float | 0.5 | Brick offset as a fraction of `stepX` (0 = stack, 0.5 = 1/2, 0.333 = 1/3) |
 | `Stagger Repeat` | Int | 1 | courses per offset step (1 = every course, 2 = every two) |
-| `Pattern L` | Float | 0.0 | Herringbone / Chevron / Basket brick length; 0 = derive from the unit (Chevron needs it) |
+| `Pattern L` | Float | 0.0 | Herringbone / Chevron / Basket brick length; 0 = derive from the unit (Herringbone / Basket use 2×`Pattern W`) |
 | `Pattern W` | Float | 0.0 | brick width; 0 = derive from the unit |
 | `Spacing Mode` | Int | 0 | 0 Step · 1 Gap · 2 Fit |
 | `Step` | Float | 1.0 | metres (also Triangle side) |
@@ -190,7 +190,7 @@ export, or shading that needs unique geometry).
 
 ## Demo scenes
 
-`demo/stan_*.png` (ten scenes) are rendered by `tools/gn/stan_array_demo.py`:
+`demo/stan_*.png` (eleven scenes) are rendered by `tools/gn/stan_array_demo.py`:
 
 | Scene | Shows |
 |---|---|
@@ -200,6 +200,7 @@ export, or shading that needs unique geometry).
 | [tri](demo/stan_tri.png) | Grid Type = Triangle — a real triangular tiling with alternating up/down cells |
 | [brick](demo/stan_brick.png) | Grid Type = Brick — 1/2 running bond with mortar and mixed brick colours |
 | [patterns](demo/stan_patterns.png) | Herringbone, Basket Weave and Chevron side by side |
+| [chevron](demo/stan_chevron.png) | Grid Type = Chevron top view: rectangular bricks sheared into planks, odd columns mirrored → 90° V |
 | [lamp](demo/stan_lamp.png) | Radial with a unit offset from its origin |
 | [bracelet](demo/stan_bracelet.png) | Curve with a cyclic path |
 | [scatter](demo/stan_scatter.png) | Mesh → Surface, normals + random variation |
@@ -222,15 +223,18 @@ These three are 2D **patterns**, not simple course offsets:
   controls the width (`L = 2W`). Blocks alternate
   orientation like a checkerboard: even blocks are two stacked horizontal bricks,
   odd blocks are two side-by-side vertical bricks. Requires a 2:1 brick.
-- **Chevron** (`5`): **the node group does not rotate the unit.** It expects a
-  mitred parallelogram authored at +45°; a rectangular brick will be placed as a
-  staggered grid, not a V. Planks sit at ±45° in a square lattice
-  (`A = L/√2`, `H = W·√2`), with odd columns mirrored to make the V. The unit must
-  be a **mitred parallelogram** with vertical ends and a +45° long axis (see the
-  demo); a plain rectangle will show V-shaped grout gaps at the joints.
-  `Pattern L` / `Pattern W` set the plank size; when both are 0 the size is derived
-  from the parallelogram bbox (`A` and `H + A`) — set them explicitly if the bbox
-  is not a clean parallelogram, or to change the plank size without editing the mesh.
+- **Chevron** (`5`): a **plain rectangular brick**, centred at the origin — the
+  node group shears it into a parallelogram before instancing:
+  `x' = sx·x`, `y' = sy·y + c·x` with `sx = (L/L0)/√2`, `sy = (W/W0)·√2`,
+  `c = √2·W/L0` (`L0`/`W0` = unit bbox, `L`/`W` = `Pattern L`/`Pattern W`).
+  Planks sit at ±45° in a square lattice (`A = L/√2`, `H = W·√2`), with odd
+  columns mirrored (`scale.x = -1`) to make the V; the slanted edges of
+  neighbouring rows meet flush (gap = overlap = 0). The V angle is
+  `2·atan(2W/L)` — 90° when `L = 2W`. Because the sheared unit is realized
+  geometry, Chevron does **not** random-pick from the collection: keep one
+  brick in it (`Pick Instance` is off, instance index is clamped to 0).
+  `Pattern L` / `Pattern W` set the plank size; when both are 0 the size is
+  derived from the unit's own bbox.
 
 `Count X` / `Count Y` mean cells for Herringbone and Basket Weave (8 and 2 bricks
 per cell), and planks for Chevron. All three are unit-size driven: author the
@@ -254,11 +258,11 @@ The value of `Stagger` is a fraction of one brick/tile length:
 | Penny round / mosaic | XY | – | – | circles in a square grid, use `Gap` |
 | Diagonal / 45° | XY or Brick | – | – | rotate the **host object** 45° |
 
-Patterns that are **not** a single course offset need a different setup:
+Patterns that are **not** a single course offset use the pattern grid types:
 
-- **Herringbone / chevron** — bricks alternate 90°; build one array of horizontal
-  and one of vertical bricks (or two rotated hosts) and offset them.
-- **Basket weave** — 2×2 blocks alternate orientation; same two-array trick.
+- **Herringbone / chevron** — bricks alternate 90°: use `Grid Type = 4`
+  (Herringbone) or `5` (Chevron, a rectangular brick sheared into planks).
+- **Basket weave** — 2×2 blocks alternate orientation: `Grid Type = 6`.
 - **English / Flemish bond** — header and stretcher courses alternate; use two
   arrays (or a Collection with two brick lengths) rather than `Stagger`.
 
@@ -313,10 +317,10 @@ python3 tools/gn/gn.py apply --object "Host" \
 python3 tools/gn/gn.py apply --group stan --object "Host" \
     --set mode=linear --set spacing_mode=fit --set length=4 --set count=9
 
-# render the ten demo scenes + contact sheet
+# render the eleven demo scenes + contact sheet
 python3 tools/gn/gn.py stan-demo --samples 32 --res 760
 
-# smoke tests (36 checks: every mode, lattice, brick bond, patterns, spacing, align, mirror, gradient, realize, fit guard, enum wiring)
+# smoke tests (43 checks: every mode, lattice, brick bond, patterns, chevron shear, spacing, align, mirror, gradient, realize, fit guard, enum wiring)
 blender -b --factory-startup --python tools/gn/test_stan_array.py
 ```
 
@@ -371,8 +375,12 @@ MIT — see [LICENSE](LICENSE).
 `Step` / `Gap` / `Fit`；用 `Gap` 當灰縫最方便，pitch 會自動是「磚 + 縫」。
 
 **Herringbone（4）／Basket Weave（6）** 需要 2:1 的磚（長 = 2×寬、原點在中心）；
-`Count X/Y` 是 4W 格／2W 區塊，每格分別 8／2 塊。**Chevron（5）** 需要「兩端垂直、
-長軸 +45°」的平行四邊形單元，`Count X/Y` 是板數；用長方形磚會在 V 接縫留下三角形縫。
+`Count X/Y` 是 4W 格／2W 區塊，每格分別 8／2 塊。**Chevron（5）** 給一塊**長方形磚**
+（原點置中）即可：node group 會先斜切（shear）成平行四邊形再實例化——
+`x' = sx·x、y' = sy·y + c·x`，`sx = (L/L0)/√2、sy = (W/W0)·√2、c = √2·W/L0`
+（`L0/W0` 是單元 bbox，`L/W` 是 `Pattern L/W`）。每隔一欄 `scale.x = -1` 鏡像成 V，
+斜邊互相貼合（gap/overlap = 0），`L = 2W` 時 V 為 90°。斜切後的單元是 realized
+mesh，所以 Chevron 不會從 Collection 隨機挑款：集合裡只放一塊磚。
 
 Hex/Triangle 不受 `Spacing Mode` 影響，間距由 `Cell Size` / `Step` 決定。
 
@@ -400,8 +408,8 @@ Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` �
 
 ```bash
 python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend
-blender -b --factory-startup --python tools/gn/test_stan_array.py   # 36 項檢查
-python3 tools/gn/gn.py stan-demo                   # 十個示範場景 + contact sheet
+blender -b --factory-startup --python tools/gn/test_stan_array.py   # 43 項檢查
+python3 tools/gn/gn.py stan-demo                   # 十一個示範場景 + contact sheet
 ```
 
 Asset 以 Blender 4.5 建置／測試，5.2 可正常開啟與評估（CLI 會優先找 4.5）。

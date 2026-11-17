@@ -9,9 +9,9 @@ Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Me
 | 路徑 | 說明 |
 |---|---|
 | [`stan_array.py`](stan_array.py) | `Stan Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
-| [`stan_array_demo.py`](stan_array_demo.py) | 十個示範場景與 Cycles 算圖（headless）。 |
+| [`stan_array_demo.py`](stan_array_demo.py) | 十一個示範場景與 Cycles 算圖（headless）。 |
 | [`contact_sheet.py`](contact_sheet.py) | 把 `demo/stan_*.png` 拼成 `demo/stan_contact.png`（需要 Pillow）。 |
-| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（36 項：每個模式、七種晶格／排法、brick 錯位、間距、方向、鏡像、漸變、Realize、Fit 退化守衛、enum 表一致性）。 |
+| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（43 項：每個模式、七種晶格／排法、brick 錯位、chevron 斜切與貼合、間距、方向、鏡像、漸變、Realize、Fit 退化守衛、enum 表一致性）。 |
 | [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
 | [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `stan-demo`，透過 Blender Bridge 操作開著的 Blender。 |
 | [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫。任何 .blend 都能 Append / Link 這個 node group。 |
@@ -46,8 +46,11 @@ Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Me
   Brick 跟 XY 一樣吃 Step/Gap/Fit。
 - `4` **Herringbone**：`Pattern W` 控制磚寬（L = 2W），4W × 4W cell，H 在 `(0,0)(3,1)(2,2)(1,3)`、V 在
   `(2,0)(1,1)(0,2)(3,3)`，每格 8 塊；磚要 2:1、中心在原點。
-- `5` **Chevron**：`Pattern L/W` 控制板尺寸（0 = 從平行四邊形 bbox 反推 `A`、`H+A`），
-  `A = L/√2`、`H = W·√2`，奇數欄鏡像；單元要是「兩端垂直、長軸 +45°」的平行四邊形。
+- `5` **Chevron**：長方形磚（原點置中）先被**斜切**成平行四邊形再實例化：
+  `x' = sx·x`、`y' = sy·y + c·x`，`sx = (L/L0)/√2`、`sy = (W/W0)·√2`、`c = √2·W/L0`
+  （`L0/W0` = 單元 bbox，`L/W` = `Pattern L/W`，0 = 從 bbox 推）。
+  `A = L/√2`、`H = W·√2`，奇數欄 `scale.x = -1` 鏡像成 V；斜切後是 realized mesh，
+  因此 Chevron 關閉 Pick Instance（instance index 固定 0），集合裡只放一塊磚。
 - `6` **Basket Weave**：`Pattern W` 控制磚寬（L = 2W），2W × 2W block，
   偶數 block 兩塊橫磚、奇數 block 兩塊直磚。
 
@@ -87,7 +90,7 @@ python3 tools/gn/gn.py apply --object "Host" --set mode=grid --set grid_type=bri
     --set count_x=10 --set count_y=17 --set spacing_mode=gap --set gap=0.008 \
     --set stagger=0.5 --set stagger_repeat=1
 
-# 示範場景（十個）+ contact sheet
+# 示範場景（十一個）+ contact sheet
 python3 tools/gn/gn.py stan-demo
 ```
 

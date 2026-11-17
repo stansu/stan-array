@@ -119,11 +119,13 @@ def _math(ng, op, loc, a=None, b=None, c=None, label=None):
 
 
 def _vmath(ng, op, loc, a=None, b=None, c=None, label=None):
+    """Vector Math。非 socket 的參數依序填到「啟用」的 input：
+    SCALE 的第二個啟用 input 是 Scale（float），所以常數倍率可以直接傳數字。"""
     n = _node(ng, "ShaderNodeVectorMath", loc, label=label, width=170, operation=op)
-    for i, value in enumerate((a, b, c)):
+    enabled = [s for s in n.inputs if getattr(s, "enabled", True)]
+    for sock, value in zip(enabled, (a, b, c)):
         if value is None:
             continue
-        sock = n.inputs[i]
         if isinstance(value, bpy.types.NodeSocket):
             _link(ng, value, sock)
         else:
@@ -581,21 +583,14 @@ def build(name=NAME):
                              _math(ng, "MULTIPLY", (-2000, -3600), row, step_y),
                              fit_y_half))
 
-    # Pattern L / W：Chevron 的 bbox 是 A × (H+A)，要反推 L、W
+    # Pattern L / W：Chevron 直接以矩形 bbox 當 L0 × W0；斜切（shear）由
+    # ① 區塊套用。矩形單元在 Instance on Points 前斜切成平行四邊形。
     pat_ch = _compare(ng, (-2650, -5600), "EQUAL", _out(gi, "Grid Type"), 5,
                       data_type="INT", label="Chevron?")
     sqrt2 = math.sqrt(2.0)
-    l0_hb = size_sep.outputs["X"]
-    w0_hb = size_sep.outputs["Y"]
-    l0_ch = _math(ng, "MULTIPLY", (-2350, -5550), size_sep.outputs["X"], sqrt2,
-                  label="L0 = A·√2")
-    w0_ch = _math(ng, "MAXIMUM", (-2350, -5700),
-                  _math(ng, "DIVIDE", (-2500, -5700),
-                        _math(ng, "SUBTRACT", (-2650, -5700),
-                              size_sep.outputs["Y"], size_sep.outputs["X"]),
-                        sqrt2), 0.0001, label="W0 = (H+A − A)/√2")
-    l0 = _switch(ng, (-2150, -5600), "FLOAT", pat_ch, l0_hb, l0_ch, label="L0")
-    w0 = _switch(ng, (-2150, -5750), "FLOAT", pat_ch, w0_hb, w0_ch, label="W0")
+    # L0/W0 = 單元 bbox；對所有 Grid Type 都一樣（Chevron 不再反推平行四邊形 bbox）
+    l0 = size_sep.outputs["X"]
+    w0 = size_sep.outputs["Y"]
     bl = _out(gi, "Pattern L")
     bw = _out(gi, "Pattern W")
     patL = _switch(ng, (-1950, -5600), "FLOAT",
@@ -611,6 +606,59 @@ def build(name=NAME):
                   l0, label="x scale")
     fit_y = _math(ng, "DIVIDE", (-1750, -5750), patW, w0, label="y scale")
     pat_fit = _xyz(ng, (-1550, -5650), x=fit_x, y=fit_y, z=1.0)
+
+    # Chevron shear：矩形 → 平行四邊形　x' = sx·x，y' = sy·y + c·x
+    # sx = (L/L0)/√2，sy = (W/W0)·√2，c = √2·W/L0（板長 L、板寬 W，含 gap）
+    ch_sx_f = _math(ng, "DIVIDE", (-2150, -5900),
+                    _math(ng, "DIVIDE", (-2300, -5900), patL, l0, label="L/L0"),
+                    sqrt2, label="sx = (L/L0)/√2")
+    ch_sy_f = _math(ng, "MULTIPLY", (-2150, -6050),
+                    _math(ng, "DIVIDE", (-2300, -6050), patW, w0, label="W/W0"),
+                    sqrt2, label="sy = (W/W0)·√2")
+    ch_c = _math(ng, "DIVIDE", (-2150, -6200),
+                 _math(ng, "MULTIPLY", (-2300, -6200), patW, sqrt2, label="√2·W"),
+                 l0, label="c = √2·W/L0")
+    # 套用 shear：矩形 → 平行四邊形。斜切後左右兩端是垂直邊（長 H = W·√2），
+    # 板寬 A = sx·L0 = L/√2；斜邊與鄰行斜邊完全貼合（gap=0、overlap=0），
+    # 斜率 = c·L0 / A = 2W/L → V 角 = 2·atan(2W/L)，L = 2W 時為 90°。
+    # 注意：SetPosition 的 field 只讀「當前」position，且不會穿過 instance，
+    # 因此斜切必須在 realized 的單元幾何上、Instance on Points 之前做。
+    start = len(ng.nodes)
+    shear_in = _switch(ng, (-2400, -6100), "GEOMETRY",
+                       _out(gi, "Unit From Collection"), _out(gi, "Geometry"),
+                       _out(units_real, "Geometry"), label="shear 來源")
+    shear_bb = _node(ng, "GeometryNodeBoundBox", (-2550, -6350),
+                     label="shear bbox", width=160)
+    _link(ng, shear_in, _in(shear_bb, "Geometry"))
+    # Offset 是「加法」：置中要給 -(Max + Min)/2
+    shear_center = _vmath(ng, "SCALE", (-2350, -6350),
+                          _vmath(ng, "ADD", (-2500, -6450), _out(shear_bb, "Max"),
+                                 _out(shear_bb, "Min"), label="Max + Min"),
+                          -0.5, label="-center")
+    shear_mid = _node(ng, "GeometryNodeSetPosition", (-2150, -6100),
+                      label="置中", width=200)
+    _link(ng, shear_in, _in(shear_mid, "Geometry"))
+    _link(ng, shear_center, _in(shear_mid, "Offset"))
+
+    pos_in = _node(ng, "GeometryNodeInputPosition", (-2150, -5850),
+                   label="position", width=160)
+    pos_sep = _separate(ng, (-1950, -5850), _out(pos_in, "Position"), label="pos XYZ")
+    ch_x_f = _math(ng, "MULTIPLY", (-1750, -5900), _out(pos_sep, "X"), ch_sx_f,
+                   label="sx·x")
+    ch_y_f = _math(ng, "ADD", (-1750, -6050),
+                   _math(ng, "MULTIPLY", (-1900, -6000), _out(pos_sep, "Y"), ch_sy_f,
+                         label="sy·y"),
+                   _math(ng, "MULTIPLY", (-1900, -6150), _out(pos_sep, "X"), ch_c,
+                         label="c·x"), label="sy·y + c·x")
+    shear_geo = _node(ng, "GeometryNodeSetPosition", (-1500, -6100),
+                      label="shear", width=200)
+    _link(ng, shear_mid.outputs["Geometry"], _in(shear_geo, "Geometry"))
+    _link(ng, _xyz(ng, (-1700, -6100), x=ch_x_f, y=ch_y_f, z=_out(pos_sep, "Z"),
+                   label="斜切後位置"), _in(shear_geo, "Position"))
+    sheared_unit = _switch(ng, (-1300, -6100), "GEOMETRY", pat_ch,
+                           unit_geo, shear_geo.outputs["Geometry"],
+                           label="sheared unit")
+    _frame(ng, "①b 斜切單元　Chevron shear", C_UNIT, list(ng.nodes)[start:])
 
     # Herringbone：4W × 4W cell，8 塊（H/H/H/H + V/V/V/V）
     hb_i = _out(gidx, "Index")
@@ -683,11 +731,11 @@ def build(name=NAME):
                  _math(ng, "ADD", (-2100, -5000), ch_col, 0.5), ch_a, label="ch x")
     ch_y = _math(ng, "MULTIPLY", (-1950, -5150),
                  _math(ng, "ADD", (-2100, -5150), ch_row, 0.5), ch_h, label="ch y")
+    # 尺寸已经在 ① 斜切時套好，這裡只留鏡像：奇數欄 scale.x = -1 → V
     ch_sx = _switch(ng, (-1950, -5300), "FLOAT", ch_par, 1.0, -1.0,
                     label="mirror odd cols")
-    ch_scale = _xyz(ng, (-1750, -5300),
-                    x=_math(ng, "MULTIPLY", (-1900, -5300), ch_sx, fit_x),
-                    y=fit_y, z=1.0, label="chevron fit")
+    ch_scale = _xyz(ng, (-1750, -5300), x=ch_sx, y=1.0, z=1.0,
+                    label="chevron mirror")
     ch_pos = _xyz(ng, (-1250, -5100), x=ch_x, y=ch_y)
 
     pat_rot = _index_switch(ng, (-1050, -4700), "FLOAT", _out(gi, "Grid Type"),
@@ -980,9 +1028,18 @@ def build(name=NAME):
     inst = _node(ng, "GeometryNodeInstanceOnPoints", (850, 200),
                  label="Instance on Points", width=200)
     _link(ng, points, _in(inst, "Points"))
-    _link(ng, unit_geo, _in(inst, "Instance"))
-    _link(ng, _out(gi, "Unit From Collection"), _in(inst, "Pick Instance"))
-    _link(ng, _out(pick, "Value"), _in(inst, "Instance Index"))
+    # Chevron 時用的是斜切後的幾何；其他 Grid Type 沿用原單元
+    _link(ng, sheared_unit, _in(inst, "Instance"))
+    # Pick Instance 需要「實例」幾何；斜切後的單元是 realized mesh，
+    # 若仍開著 Pick Instance，depsgraph 會吐 0 個實例。因此 Chevron 一律關掉：
+    # 每格都使用同一塊斜切磚（Unit Collection 請只放一塊矩形磚）。
+    pick_inst = _switch(ng, (-950, -300), "BOOLEAN", pat_ch,
+                        _out(gi, "Unit From Collection"), False, label="pick instance")
+    _link(ng, pick_inst, _in(inst, "Pick Instance"))
+    # 斜切後的 Instance 只有一份，index 也固定 0（否則隨機 index 會超出範圍）
+    inst_idx = _switch(ng, (-750, -300), "INT", pat_ch,
+                       _out(pick, "Value"), 0, label="instance index")
+    _link(ng, inst_idx, _in(inst, "Instance Index"))
     _link(ng, final_rot, _in(inst, "Rotation"))
     na_scale = _node(ng, "GeometryNodeInputNamedAttribute", (850, 450),
                      label="scale", width=170, data_type="FLOAT_VECTOR")
