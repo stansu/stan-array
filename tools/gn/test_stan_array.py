@@ -1,15 +1,16 @@
 """Headless smoke tests for the Stan Array node group.
 
-    blender -b --factory-startup --python tools/gn/test_array.py
+    blender -b --factory-startup --python tools/gn/test_stan_array.py
 
 Builds the group from source, exercises every mode / spacing / orientation /
-variation path on a throwaway scene, and checks instance transforms. Prints
-one line per check and exits non-zero on the first mismatch.
+variation path on a throwaway scene, checks instance transforms plus the
+enum tables shared with the CLI, and exits non-zero on the first mismatch.
 """
 
 import math
 import os
 import sys
+import traceback
 
 import bpy
 
@@ -17,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import stan_array as sa  # noqa: E402
+import gn  # noqa: E402  (CLI enum table — must stay in sync with sa tables)
 
 TOL = 1e-3
 FAILS = []
@@ -326,9 +328,49 @@ def main():
           len(me.vertices) == 40 and len(me.polygons) == 30,
           "%d verts %d faces" % (len(me.vertices), len(me.polygons)))
 
+    # Fit with Length smaller than the unit: pitch clamps to 0 and all copies
+    # overlap at the centered origin (documented behaviour, must not crash/nan).
+    reset(mod)
+    setv(mod, "Spacing Mode", 2)
+    setv(mod, "Length", 0.1)
+    got = samples(host)
+    check("fit degenerate length clamps to 0 pitch",
+          len(got) == 5 and all(close(g["pos"], (0.2, 0, 0)) for g in got),
+          str([g["pos"] for g in got]))
+
+    # enum tables are the single source of truth: socket ranges, socket
+    # descriptions and the CLI names must all agree with them.
+    by_name = {item.name: item for item in ng.interface.items_tree
+               if getattr(item, "in_out", "") == "INPUT"}
+    for sock_name, names in (("Mode", sa.MODE_NAMES),
+                             ("Grid Type", sa.GRID_NAMES),
+                             ("Spacing Mode", sa.SPACING_NAMES),
+                             ("Align", sa.ALIGN_NAMES),
+                             ("Mesh Mode", sa.MESH_NAMES),
+                             ("Mirror Axis", sa.AXIS_NAMES),
+                             ("Forward Axis", sa.AXIS_NAMES),
+                             ("Up Axis", sa.AXIS_NAMES)):
+        item = by_name[sock_name]
+        desc = item.description or ""
+        cli = gn.ENUMS.get(sock_name, {})
+        norm = lambda n: n.lower().replace(" ", "").replace("_", "")  # noqa: E731
+        ok = (item.max_value == len(names) - 1
+              and all(("%d %s" % (i, n)) in desc for i, n in enumerate(names))
+              and len(cli) >= len(names)
+              and all(cli.get(norm(n)) == i for i, n in enumerate(names)))
+        check("enum %s: range, description, CLI names" % sock_name, ok,
+              "max=%s desc=%s cli=%s" % (item.max_value, desc[:40], cli))
+
     print("\n%d checks, %d failed" % (CHECKS, len(FAILS)))
     return 1 if FAILS else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Blender background mode exits 0 even when the script raises, so turn
+    # any exception (and any failed check) into a non-zero exit code.
+    try:
+        rc = main()
+    except Exception:
+        traceback.print_exc()
+        rc = 1
+    sys.exit(rc)
