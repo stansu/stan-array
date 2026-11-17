@@ -11,7 +11,7 @@ Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Me
 | [`stan_array.py`](stan_array.py) | `Stan Array` node group 的產生器（純 bpy，可重跑、可版控）。 |
 | [`stan_array_demo.py`](stan_array_demo.py) | 十個示範場景與 Cycles 算圖（headless）。 |
 | [`contact_sheet.py`](contact_sheet.py) | 把 `demo/stan_*.png` 拼成 `demo/stan_contact.png`（需要 Pillow）。 |
-| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（27 項：每個模式、七種晶格／排法、brick 錯位、間距、方向、鏡像、漸變、Realize）。 |
+| [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（36 項：每個模式、七種晶格／排法、brick 錯位、間距、方向、鏡像、漸變、Realize、Fit 退化守衛、enum 表一致性）。 |
 | [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
 | [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `stan-demo`，透過 Blender Bridge 操作開著的 Blender。 |
 | [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫。任何 .blend 都能 Append / Link 這個 node group。 |
@@ -23,7 +23,7 @@ Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Me
 |---|---|
 | ① 單位與尺寸 | Unit selection（host / collection）＋ Bounding Box → 單元尺寸 |
 | ② 間距 | 方向投影、Fit/Gap/Step 三個候選值 → Index Switch |
-| ③ 排列 | A Linear、B Grid（XY / Hex / Tri）、C Radial、D Curve、E Mesh、F Collection；每個分支把 `arr_rot` / `arr_fwd` / `arr_nrm` 存成點屬性 |
+| ③ 排列 | A Linear、B Grid（XY / Hex / Tri / Brick / Herringbone / Chevron / Basket Weave）、C Radial、D Curve、E Mesh、F Collection；每個分支把 `arr_rot` / `arr_fwd` / `arr_nrm` 存成點屬性 |
 | ④ 方向 | 讀回屬性 → Natural / Forward / Up → Rotation |
 | ⑤ 實例化 | Instance on Points（可 Pick Instance） |
 | ⑥ 變化 | Rotate / Scale / Set Position（Unit Scale、隨機、鏡像、漸變） |
