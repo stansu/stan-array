@@ -5,6 +5,7 @@ Talks to the *live* Blender through the Blender Bridge (tools/blender-bridge),
 so whatever you see on screen is what gets the modifier.
 
     python3 tools/gn/gn.py build                 # rebuild assets/geometry_nodes.blend
+    python3 tools/gn/gn.py build --group box     # rebuild assets/box_nodes.blend
     python3 tools/gn/gn.py inputs                # list the node group inputs
     python3 tools/gn/gn.py inputs --group box    # Stan Box inputs
     python3 tools/gn/gn.py list                  # node groups in the running Blender
@@ -14,6 +15,7 @@ so whatever you see on screen is what gets the modifier.
     python3 tools/gn/gn.py box-demo              # render the box demo scenes
 
 All subcommands accept --group: "stan" (Stan Array) or "box" (Stan Box).
+每個 group 有自己的 asset 檔（Stan Box 不與 Stan Array 放在一起）。
 """
 
 import argparse
@@ -26,11 +28,13 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
-ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
+ASSETS = {"stan": os.path.join(WORKSPACE, "assets", "geometry_nodes.blend"),
+          "box": os.path.join(WORKSPACE, "assets", "box_nodes.blend")}
 GROUPS = {"stan": "Stan Array", "box": "Stan Box"}
 MODULES = {"stan": "stan_array", "box": "box_generator"}
 GROUP = GROUPS["stan"]
 MODULE = MODULES["stan"]
+ASSET = ASSETS["stan"]
 
 
 def _find_blender():
@@ -185,22 +189,30 @@ def run_json(code, timeout=180):
 # ------------------------------------------------------------------- commands
 def cmd_build(args):
     cmd = [BLENDER, "-b", "--factory-startup", "--python",
-           os.path.join(HERE, "build_asset.py"), "--", "--asset", ASSET]
+           os.path.join(HERE, "build_asset.py"), "--"]
+    if args.group:
+        cmd += ["--group", GROUPS[args.group], "--asset", ASSETS[args.group]]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     tail = (proc.stdout or "") + (proc.stderr or "")
+    built = []
     for line in tail.splitlines():
         if "GN_ASSET_JSON " in line:
             payload = line.split("GN_ASSET_JSON ", 1)[1]
             data = json.JSONDecoder().raw_decode(payload)[0]
-            print("asset : %s" % data["asset"])
-            for group in data["groups"]:
-                print("group : %-12s nodes=%-4d links=%-4d  %s"
-                      % (group["name"], group["nodes"], group["links"],
-                         group["description"]))
-            return 0
-        if "Error" in line or "Traceback" in line:
-            print(line, file=sys.stderr)
-    print(tail[-2000:], file=sys.stderr)
+            built = data["groups"]
+    if built:
+        for group in built:
+            print("asset : %s" % group["asset"])
+            print("group : %-12s nodes=%-4d links=%-4d  %s"
+                  % (group["name"], group["nodes"], group["links"],
+                     group["description"]))
+        return 0
+    err = "\n".join(l for l in tail.splitlines() if "Traceback" in l)
+    try:
+        print("建立失敗（blender 回傳 %d）" % proc.returncode, file=sys.stderr)
+        print((err or tail)[-2000:], file=sys.stderr)
+    except OSError:
+        pass
     return proc.returncode or 1
 
 
@@ -398,11 +410,11 @@ print("GN_JSON " + json.dumps({
     return 0
 
 
-def _run_demo(args, script, prefix, sheet_name):
+def _run_demo(args, script, prefix, sheet_name, asset):
     os.makedirs(os.path.join(WORKSPACE, "demo"), exist_ok=True)
     cmd = [BLENDER, "-b", "--factory-startup", "--python",
            os.path.join(HERE, script), "--",
-           "--asset", ASSET, "--out", os.path.join(WORKSPACE, "demo"),
+           "--asset", asset, "--out", os.path.join(WORKSPACE, "demo"),
            "--samples", str(args.samples), "--res", str(args.res)]
     if args.only:
         cmd += ["--only", args.only]
@@ -421,11 +433,13 @@ def _run_demo(args, script, prefix, sheet_name):
 
 
 def cmd_stan_demo(args):
-    return _run_demo(args, "stan_array_demo.py", "stan_", "stan_contact.png")
+    return _run_demo(args, "stan_array_demo.py", "stan_", "stan_contact.png",
+                     ASSETS["stan"])
 
 
 def cmd_box_demo(args):
-    return _run_demo(args, "box_demo.py", "box_", "box_contact.png")
+    return _run_demo(args, "box_demo.py", "box_", "box_contact.png",
+                     ASSETS["box"])
 
 
 # ----------------------------------------------------------------------- main
@@ -433,7 +447,9 @@ def main():
     ap = argparse.ArgumentParser(description="Stan Geometry Nodes toolkit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend")
+    p = sub.add_parser("build", help="重建 asset 檔（每個 group 一個檔）")
+    p.add_argument("--group", choices=sorted(GROUPS), default=None,
+                   help="只建一個：stan → geometry_nodes.blend，box → box_nodes.blend（預設全部）")
     p.set_defaults(func=cmd_build)
 
     p = sub.add_parser("inputs", help="列出 node group 參數")
@@ -475,10 +491,11 @@ def main():
     p.set_defaults(func=cmd_box_demo)
 
     args = ap.parse_args()
-    global GROUP, MODULE
-    key = getattr(args, "group", "stan")
+    global GROUP, MODULE, ASSET
+    key = getattr(args, "group", None) or "stan"
     GROUP = GROUPS[key]
     MODULE = MODULES[key]
+    ASSET = ASSETS[key]
     return args.func(args) or 0
 
 

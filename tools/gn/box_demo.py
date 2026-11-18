@@ -1,10 +1,11 @@
 """Render the Stan Box demo scenes (headless).
 
     blender -b --factory-startup --python tools/gn/box_demo.py -- \
-        --asset assets/geometry_nodes.blend --out demo
+        --asset assets/box_nodes.blend --out demo
 
 Each scene is built from scratch, the Stan Box node group is appended from
-the asset file, and the result is rendered with Cycles (CPU). Run
+the box asset file (Stan Box has its own asset — it is not bundled with
+Stan Array), and the result is rendered with Cycles (CPU). Run
 tools/gn/contact_sheet.py --prefix box_ for the combined sheet.
 """
 
@@ -17,7 +18,7 @@ from mathutils import Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
-DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
+DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "box_nodes.blend")
 DEFAULT_OUT = os.path.join(WORKSPACE, "demo")
 GROUP = "Stan Box"
 

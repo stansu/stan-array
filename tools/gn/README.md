@@ -1,6 +1,6 @@
 # Stan Geometry Nodes 工具庫（GN）
 
-兩個可重跑的 Geometry Nodes group，都存在同一個資產檔裡：
+兩個可重跑的 Geometry Nodes group，**各存自己的資產檔**（Stan Box 不與 Stan Array 放在一起）：
 
 - `Stan Array`：通用陣列 — Linear／Grid（XY・Hex・
   Triangle・Brick・Herringbone・Chevron・Basket Weave）／Radial／Curve／Mesh／Collection，間距支援 Step／Gap／Fit，
@@ -21,9 +21,10 @@
 | [`contact_sheet.py`](contact_sheet.py) | 拼 contact sheet；`--prefix stan_` → `stan_contact.png`、`--prefix box_` → `box_contact.png`（需要 Pillow）。 |
 | [`test_stan_array.py`](test_stan_array.py) | 無頭煙霧測試（43 項：每個模式、七種晶格／排法、brick 錯位、chevron 斜切與貼合、間距、方向、鏡像、漸變、Realize、Fit 退化守衛、enum 表一致性）。 |
 | [`test_box_generator.py`](test_box_generator.py) | 無頭煙霧測試（27 項：尺寸×倍率、每邊 ≥2、开口方向、整數不開口、Plug/Cube、壁厚、收口、圓角、實例化與隨機、屬性、材質、enum 表一致性）。 |
-| [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：建兩個 group、標記 Asset、存 `assets/geometry_nodes.blend`。 |
+| [`build_asset.py`](build_asset.py) | 無頭 Blender 入口：每個 group 建自己的 asset 檔並標記 Asset（`--group`／`--asset` 可只建一個）。 |
 | [`gn.py`](gn.py) | CLI：`build` / `inputs` / `list` / `apply` / `reload` / `stan-demo` / `box-demo`，透過 Blender Bridge 操作開著的 Blender（`--group stan | box`）。 |
-| [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | 資產庫（Stan Array + Stan Box）。任何 .blend 都能 Append / Link 這兩個 node group。 |
+| [`../../assets/geometry_nodes.blend`](../../assets/geometry_nodes.blend) | Stan Array 資產檔。任何 .blend 都能 Append / Link 這個 node group。 |
+| [`../../assets/box_nodes.blend`](../../assets/box_nodes.blend) | Stan Box 資產檔（獨立，不與 Stan Array 放在一起）。任何 .blend 都能 Append / Link。 |
 | [`../../demo/stan_array_demo.blend`](../../demo/stan_array_demo.blend) | 陣列示範場景（欄杆；host 上已套好 modifier 與參數）。 |
 | [`../../demo/box_demo.blend`](../../demo/box_demo.blend) | 盒示範場景（solid；host 上已套好 modifier 與參數）。 |
 
@@ -92,8 +93,9 @@ Hex/Triangle 不使用 `Spacing Mode`；點數 = `Count X × Count Y`，直接�
 
 ### 1. 在 Blender 裡直接 Append
 
-`File > Append` → `assets/geometry_nodes.blend` → `NodeTree` → `Stan Array` 或 `Stan Box`。
-之後對物件加 **Geometry Nodes** modifier 再選這個 group（Stan Box 的面板是
+`File > Append` → `assets/geometry_nodes.blend` → `NodeTree` → `Stan Array`；
+`File > Append` → `assets/box_nodes.blend` → `NodeTree` → `Stan Box`（兩個 group 各在自己
+的資產檔裡）。之後對物件加 **Geometry Nodes** modifier 再選這個 group（Stan Box 的面板是
 `① 尺寸`、`② 網格`、`③ 空心`、`④ 實例`、`⑤ 輸出`）。
 
 ### 2. 用 CLI 套到物件上
@@ -101,8 +103,9 @@ Hex/Triangle 不使用 `Spacing Mode`；點數 = `Count X × Count Y`，直接�
 需要開著的 Blender + Blender Bridge（`tools/blender-bridge`）。
 
 ```bash
-# 重建資產（無頭 Blender）
+# 重建資產（無頭 Blender；每個 group 各存自己的 asset 檔）
 python3 tools/gn/gn.py build
+python3 tools/gn/gn.py build --group box    # 只重建 assets/box_nodes.blend
 
 # 目前 Blender 裡有哪些工具 / 這個工具吃什麼參數
 python3 tools/gn/gn.py list --group box

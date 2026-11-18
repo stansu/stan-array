@@ -1,7 +1,8 @@
 # Stan Geometry Nodes
 
 Two scriptable **Geometry Nodes** groups for Blender, built from pure `bpy`
-generators and shipped in one asset file:
+generators. Each group ships as **its own asset file** (Stan Box is not bundled
+with Stan Array):
 
 - **Stan Array** — a general-purpose array modifier: one node group with six
   layouts, three lattice types inside Grid, and three spacing rules:
@@ -16,9 +17,9 @@ generators and shipped in one asset file:
 
 ![Stan Box demo scenes](demo/box_contact.png)
 
-Built and tested on **Blender 4.5** (the asset also opens and evaluates in 5.2).
-The group is marked as an **Asset**, so it works in any `.blend` once you Append /
-Link it.
+Built and tested on **Blender 4.5** (both assets also open and evaluate in 5.2).
+The groups are marked as **Assets**, so they work in any `.blend` once you
+Append / Link them.
 
 > **Migrating from Hex Array:** the old standalone `Hex Array` group is now
 > **`Mode = Grid` + `Grid Type = Hex`**. The old group (and its demo) still live in
@@ -29,8 +30,9 @@ Link it.
 
 ## Quick start
 
-1. **File → Append…** → `assets/geometry_nodes.blend` → **NodeTree** →
-   `Stan Array` **or** `Stan Box`.
+1. **File → Append…** — each group lives in its own asset file:
+   `assets/geometry_nodes.blend` → **NodeTree** → `Stan Array`, or
+   `assets/box_nodes.blend` → **NodeTree** → `Stan Box`.
 2. Add a **Geometry Nodes** modifier to a mesh object and pick the group.
 3. Fill the panel inputs. The modifier UI is grouped:
    Stan Array — `① 排列`, `② 環狀`, `③ 曲線與網格`, `④ 方向`, `⑤ 變化`, `⑥ 輸出`;
@@ -438,8 +440,9 @@ Stan Box:
 ## CLI, build and tests
 
 ```bash
-# rebuild assets/geometry_nodes.blend from the Python generator (headless)
+# rebuild both asset files (each group → its own .blend, headless)
 python3 tools/gn/gn.py build
+python3 tools/gn/gn.py build --group box    # only assets/box_nodes.blend
 
 # list / inspect a group (needs a running Blender + Blender Bridge)
 python3 tools/gn/gn.py inputs
@@ -480,7 +483,8 @@ itself works in 4.5 and 5.2. The bridge is optional — only `inputs`, `apply`,
 ### Repository layout
 
 ```
-assets/geometry_nodes.blend    Stan Array + Stan Box node groups (asset)
+assets/geometry_nodes.blend    Stan Array node group (asset)
+assets/box_nodes.blend         Stan Box node group (asset — separate file)
 demo/                          demo scenes, renders, contact sheets
 tools/gn/                      generators (stan_array.py, box_generator.py), build, CLI, tests, demos, contact sheet
 tools/blender-bridge/          optional localhost bridge add-on for the CLI
@@ -495,7 +499,7 @@ MIT — see [LICENSE](LICENSE).
 ## 中文說明
 
 **Stan Array** 是一個 Geometry Nodes modifier group：`File → Append` →
-`assets/geometry_nodes.blend` → `NodeTree` → `Stan Array` 或 `Stan Box`，加到物件上，選 **Mode**：
+`assets/geometry_nodes.blend` → `NodeTree` → `Stan Array`，加到物件上，選 **Mode**：
 
 - `0` 線性（Direction 方向）
 - `1` 網格（**Grid Type**：`0` XY、`1` Hex、`2` Triangle、`3` Brick、`4` Herringbone、`5` Chevron、`6` Basket Weave）
@@ -547,7 +551,9 @@ Empty 物件 GN 看不到，請用小 mesh 當 locator。
 `Gap` 是用 bounding box 量的，不是精確外型；`Fit` 在單元比 `Length` 大時間距會變 0。
 Unit collection 的物件請把 scale 套用、留在原點（`Reset Children` 會忽略物件變換）。
 
-**Stan Box** 是**盒生成器**（不是陣列）：立方體在 node group 裡用輸入參數建出來，
+**Stan Box** 是**盒生成器**（不是陣列）：`File → Append` →
+`assets/box_nodes.blend` → `NodeTree` → `Stan Box`（Stan Box 有自己的資產檔，不與 Stan Array 放在一起）。
+立方體在 node group 裡用輸入參數建出來，
  host 物件原本的 geometry 會被盒（或盒實例）取代。
 
 **① 尺寸**：`Size XYZ`（盒尺寸，公尺）、`Scale Factor`（整體倍率）。
@@ -611,7 +617,8 @@ bevel 半徑。`Rotation Range` 是**弧度**（跟 Stan Array 的 `Random Rotat
 ### 建置與測試
 
 ```bash
-python3 tools/gn/gn.py build                       # 重建 assets/geometry_nodes.blend（Stan Array + Stan Box）
+python3 tools/gn/gn.py build                       # 重建兩個 asset 檔（各自一個：geometry_nodes.blend = Stan Array、box_nodes.blend = Stan Box）
+python3 tools/gn/gn.py build --group box           # 只重建 assets/box_nodes.blend
 blender -b --factory-startup --python tools/gn/test_stan_array.py   # 43 項檢查
 blender -b --factory-startup --python tools/gn/test_box_generator.py # 27 項檢查
 python3 tools/gn/gn.py stan-demo                   # 十一個陣列示範場景 + contact sheet
