@@ -37,6 +37,11 @@ def _find_blender_bin():
     found = shutil.which("blender")
     if found:
         return found
+    # 工作區旁複製的 Blender（qwen/blender-4.5.0/blender）— 優先使用
+    workspace = os.path.dirname(os.path.dirname(HERE))
+    hits = sorted(glob.glob(os.path.join(os.path.dirname(workspace), "blender*/blender")))
+    if hits:
+        return hits[-1]
     for pattern in ("~/apps/blender/blender-*/blender",
                     "/opt/blender*/blender",
                     "/usr/local/blender*/blender"):
