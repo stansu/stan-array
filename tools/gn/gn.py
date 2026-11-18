@@ -41,6 +41,12 @@ def _find_blender():
     env = os.environ.get("BLENDER_BIN")
     if env and os.path.exists(env):
         return env
+    # 工作區旁複製的 Blender（qwen/blender-4.5.0/blender）— 優先使用，不用去外面找
+    parent = os.path.dirname(WORKSPACE)
+    for pattern in ("blender-4.5*/blender", "blender*/blender"):
+        hits = sorted(glob.glob(os.path.join(parent, pattern)))
+        if hits:
+            return hits[-1]
     found = shutil.which("blender")
     if found:
         return found
