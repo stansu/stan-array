@@ -56,7 +56,8 @@ DEFAULT_BLENDER = _find_blender_bin()
 
 def probe(port):
     try:
-        return bridge_client.send({"op": "session"}, port=port, timeout=5)
+        # GPU 啟動後的 session 查詢（含 GPU 資訊）可能比 ping 慢，給 15 秒
+        return bridge_client.send({"op": "session"}, port=port, timeout=15)
     except OSError:
         return None
 
