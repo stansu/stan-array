@@ -18,4 +18,6 @@ jobs:
           tar -xf blender-4.5.0-linux-x64.tar.xz
 
       - name: Run headless smoke tests
-        run: blender-4.5.0-linux-x64/blender -b --factory-startup --python tools/gn/test_stan_array.py
+        run: |
+          blender-4.5.0-linux-x64/blender -b --factory-startup --python tools/gn/test_stan_array.py
+          blender-4.5.0-linux-x64/blender -b --factory-startup --python tools/gn/test_box_generator.py

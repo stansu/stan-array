@@ -3,12 +3,14 @@
 
     python3 tools/gn/contact_sheet.py
     python3 tools/gn/contact_sheet.py --dir demo --cols 4
+    python3 tools/gn/contact_sheet.py --prefix box_ --out box_contact.png
 """
 
 import argparse
 import os
 
 ORDER = ["fence", "tiles", "hex", "tri", "brick", "patterns", "chevron", "lamp", "bracelet", "scatter", "locators"]
+BOX_ORDER = ["solid", "hollow", "plug", "scatter", "corner"]
 
 
 def main():
@@ -18,21 +20,24 @@ def main():
         "demo"))
     ap.add_argument("--cols", type=int, default=3)
     ap.add_argument("--out", default="stan_contact.png")
+    ap.add_argument("--prefix", default="stan_",
+                    help="PNG prefix: stan_ (Stan Array) or box_ (Stan Box)")
     args = ap.parse_args()
 
     try:
         from PIL import Image, ImageDraw
     except ImportError:
-        print("需要 Pillow：pip install pillow（或直接看 demo/stan_*.png）")
+        print("需要 Pillow：pip install pillow（或直接看 demo/*.png）")
         return 0
 
+    order = BOX_ORDER if args.prefix == "box_" else ORDER
     images = []
-    for name in ORDER:
-        path = os.path.join(args.dir, "stan_%s.png" % name)
+    for name in order:
+        path = os.path.join(args.dir, args.prefix + name + ".png")
         if os.path.exists(path):
             images.append((name, Image.open(path).convert("RGB")))
     if not images:
-        print("找不到 demo/stan_*.png")
+        print("找不到 demo/%s*.png" % args.prefix)
         return 1
 
     w, h = images[0][1].size

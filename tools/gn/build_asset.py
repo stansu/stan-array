@@ -19,6 +19,7 @@ WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
 import stan_array  # noqa: E402
+import box_generator  # noqa: E402
 
 DEFAULT_ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
 CATALOG = "Geometry Nodes"
@@ -26,6 +27,8 @@ CATALOG = "Geometry Nodes"
 MODULES = [
     (stan_array, ("geometry nodes", "array", "instancing", "hex", "curve",
                   "radial", "triangle")),
+    (box_generator, ("geometry nodes", "box", "generator", "hollow",
+                     "instancing")),
 ]
 
 

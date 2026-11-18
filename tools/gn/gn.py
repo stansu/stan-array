@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""gn.py — Stan Array toolkit CLI.
+"""gn.py — Stan Geometry Nodes toolkit CLI.
 
 Talks to the *live* Blender through the Blender Bridge (tools/blender-bridge),
 so whatever you see on screen is what gets the modifier.
 
     python3 tools/gn/gn.py build                 # rebuild assets/geometry_nodes.blend
     python3 tools/gn/gn.py inputs                # list the node group inputs
+    python3 tools/gn/gn.py inputs --group box    # Stan Box inputs
     python3 tools/gn/gn.py list                  # node groups in the running Blender
     python3 tools/gn/gn.py apply --object Host --set mode=grid --set grid_type=hex
+    python3 tools/gn/gn.py apply --group box --object Host --set hollow=1 --set fill=cube
     python3 tools/gn/gn.py stan-demo             # render the demo scenes (headless)
+    python3 tools/gn/gn.py box-demo              # render the box demo scenes
 
-All subcommands accept --group for future tools; today there is one group,
-"Stan Array" (key: stan).
+All subcommands accept --group: "stan" (Stan Array) or "box" (Stan Box).
 """
 
 import argparse
@@ -25,8 +27,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(os.path.dirname(HERE))
 ASSET = os.path.join(WORKSPACE, "assets", "geometry_nodes.blend")
-GROUPS = {"stan": "Stan Array"}
-MODULES = {"stan": "stan_array"}
+GROUPS = {"stan": "Stan Array", "box": "Stan Box"}
+MODULES = {"stan": "stan_array", "box": "box_generator"}
 GROUP = GROUPS["stan"]
 MODULE = MODULES["stan"]
 
@@ -102,6 +104,33 @@ ALIASES = {
     "gradient_scale": "Gradient Scale",
     "gradient_rotate": "Gradient Rotate",
     "realize": "Realize",
+    # Stan Box
+    "size": "Size XYZ",
+    "size_xyz": "Size XYZ",
+    "scale_factor": "Scale Factor",
+    "vertices": "Vertices Per Side",
+    "vertices_per_side": "Vertices Per Side",
+    "subdivide": "Subdivide",
+    "hollow": "Hollow",
+    "wall": "Wall Thickness",
+    "wall_thickness": "Wall Thickness",
+    "fill": "Fill Mode",
+    "fill_mode": "Fill Mode",
+    "shrink": "Shrink Faces",
+    "shrink_faces": "Shrink Faces",
+    "shrink_scale": "Shrink Scale",
+    "corner": "Corner Mode",
+    "corner_mode": "Corner Mode",
+    "use_instances": "Use Instances",
+    "instances": "Use Instances",
+    "jitter": "Jitter",
+    "rotation_range": "Rotation Range",
+    "rotate_range": "Rotation Range",
+    "scale_random": "Scale Random",
+    "realize_instances": "Realize Instances",
+    "store_attributes": "Store Attributes",
+    "shade_smooth": "Shade Smooth",
+    "material": "Material",
 }
 
 # Int enums can be set by name from the CLI
@@ -117,6 +146,9 @@ ENUMS = {
     "Mirror Axis": {"x": 0, "y": 1, "z": 2},
     "Forward Axis": {"x": 0, "y": 1, "z": 2},
     "Up Axis": {"x": 0, "y": 1, "z": 2},
+    # Stan Box — mirrors box_generator.FILL_NAMES / CORNER_NAMES
+    "Fill Mode": {"none": 0, "open": 0, "plug": 1, "cube": 2},
+    "Corner Mode": {"none": 0, "subdivide": 1, "round": 1},
 }
 
 
@@ -297,11 +329,15 @@ def set_input(name, value):
             return True
     raise KeyError(name)
 
-if coll is not None:
+def has_input(name):
+    return any(it.item_type == 'SOCKET' and it.in_out == 'INPUT' and it.name == name
+               for it in ng.interface.items_tree)
+
+if coll is not None and has_input('Collection'):
     set_input("Collection", coll)
 
 objects = [o for o in (coll.objects if coll else []) if o.type == 'MESH']
-if "Collection Count" not in applied:
+if has_input("Collection Count") and "Collection Count" not in applied:
     count = max(1, len(objects))
     set_input("Collection Count", count)
     applied["Collection Count"] = count
@@ -362,10 +398,10 @@ print("GN_JSON " + json.dumps({
     return 0
 
 
-def cmd_stan_demo(args):
+def _run_demo(args, script, prefix, sheet_name):
     os.makedirs(os.path.join(WORKSPACE, "demo"), exist_ok=True)
     cmd = [BLENDER, "-b", "--factory-startup", "--python",
-           os.path.join(HERE, "stan_array_demo.py"), "--",
+           os.path.join(HERE, script), "--",
            "--asset", ASSET, "--out", os.path.join(WORKSPACE, "demo"),
            "--samples", str(args.samples), "--res", str(args.res)]
     if args.only:
@@ -379,13 +415,22 @@ def cmd_stan_demo(args):
         print(tail[-3000:], file=sys.stderr)
         return proc.returncode
     sheet = os.path.join(HERE, "contact_sheet.py")
-    subprocess.run([sys.executable, sheet, "--dir", os.path.join(WORKSPACE, "demo")])
+    subprocess.run([sys.executable, sheet, "--dir", os.path.join(WORKSPACE, "demo"),
+                    "--prefix", prefix, "--out", sheet_name])
     return 0
+
+
+def cmd_stan_demo(args):
+    return _run_demo(args, "stan_array_demo.py", "stan_", "stan_contact.png")
+
+
+def cmd_box_demo(args):
+    return _run_demo(args, "box_demo.py", "box_", "box_contact.png")
 
 
 # ----------------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="Stan Array toolkit")
+    ap = argparse.ArgumentParser(description="Stan Geometry Nodes toolkit")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("build", help="重建 assets/geometry_nodes.blend")
@@ -399,12 +444,12 @@ def main():
     p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("apply", help="把 Stan Array 套到物件上")
+    p = sub.add_parser("apply", help="把 node group 套到物件上")
     p.add_argument("--group", choices=sorted(GROUPS), default="stan")
     p.add_argument("--object", required=True, help="目標 mesh 物件名稱")
     p.add_argument("--collection", help="Unit From Collection 的 collection 名稱")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
-                   help="參數，可重複，例如 --set grid_type=hex --set cell=0.25")
+                   help="參數，可重複，例如 --set grid_type=hex --set hollow=1")
     p.add_argument("--reload", action="store_true",
                    help="丟掉 session 裡的舊版 node group，重新從 asset 載入")
     p.set_defaults(func=cmd_apply, reload=False)
@@ -415,12 +460,19 @@ def main():
                    help="即使還有 modifier 在用也移除（會斷掉那些 modifier）")
     p.set_defaults(func=cmd_reload, force=False)
 
-    p = sub.add_parser("stan-demo", aliases=["demo"], help="建示範場景並算圖（headless）")
+    p = sub.add_parser("stan-demo", aliases=["demo"], help="建 Stan Array 示範場景並算圖（headless）")
     p.add_argument("--only", default="",
                    help="fence,tiles,hex,tri,lamp,bracelet,scatter,locators")
     p.add_argument("--samples", type=int, default=32)
     p.add_argument("--res", type=int, default=760)
     p.set_defaults(func=cmd_stan_demo)
+
+    p = sub.add_parser("box-demo", help="建 Stan Box 示範場景並算圖（headless）")
+    p.add_argument("--only", default="",
+                   help="solid,hollow,plug,scatter,corner")
+    p.add_argument("--samples", type=int, default=32)
+    p.add_argument("--res", type=int, default=760)
+    p.set_defaults(func=cmd_box_demo)
 
     args = ap.parse_args()
     global GROUP, MODULE
